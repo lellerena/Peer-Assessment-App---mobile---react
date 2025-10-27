@@ -1,5 +1,5 @@
-import { AuthRepository } from "../../repositories/AuthRepository";
-import { AuthUser } from "../AuthUser";
+import { AuthUser } from "../entities/AuthUser";
+import { AuthRepository } from "../repositories/AuthRepository";
 
 
 export class GetCurrentUserUseCase {

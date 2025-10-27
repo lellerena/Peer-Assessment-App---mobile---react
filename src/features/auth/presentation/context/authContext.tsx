@@ -49,7 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [getCurrentUserUseCase]);
 
   const login = async (email: string, password: string) => {
+    console.log("AuthContext - Starting login for:", email);
     const loggedInUser = await loginUseCase.execute(email, password);
+    console.log("AuthContext - Login successful, user data:", loggedInUser);
     setUser(loggedInUser);
     setIsLoggedIn(true);
   };

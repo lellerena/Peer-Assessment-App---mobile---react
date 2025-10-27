@@ -29,9 +29,48 @@ export class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         const data = await response.json();
         const token = data["accessToken"];
         const refreshToken = data["refreshToken"];
+        
+        console.log("═══════════════════════════════════════════");
+        console.log("🔐 Full login response from Roble:");
+        console.log(JSON.stringify(data, null, 2));
+        console.log("═══════════════════════════════════════════");
+        
+        // Guardar tokens
         await this.prefs.storeData("token", token);
         await this.prefs.storeData("refreshToken", refreshToken);
-        console.log("Token:", token, "\nRefresh Token:", refreshToken);
+        console.log("✅ Tokens saved successfully");
+        
+        // Guardar información del usuario
+        let userInfo: any = {};
+        
+        // Si viene un objeto "user"
+        if (data["user"]) {
+          userInfo = data["user"];
+          console.log("✅ User data from 'user' field:", userInfo);
+        } else {
+          // Intentar extraer de campos directos
+          if (data["email"]) userInfo.email = data["email"];
+          if (data["_id"]) userInfo._id = data["_id"];
+          if (data["id"]) userInfo._id = data["id"];
+          if (data["name"]) userInfo.name = data["name"];
+          if (data["userId"]) userInfo._id = data["userId"];
+          
+          console.log("📝 Extracted user info:", userInfo);
+        }
+        
+        // Si después del login no tenemos user data, usar el email de login
+        if (!userInfo.email) {
+          // Extraer email del cuerpo de la request (pasado como parámetro)
+          userInfo.email = email;
+        }
+        
+        if (Object.keys(userInfo).length > 0) {
+          await this.prefs.storeData("userData", JSON.stringify(userInfo));
+          console.log("✅ User data saved:", userInfo);
+        } else {
+          console.warn("⚠️ Could not extract user data from response");
+        }
+        
         return Promise.resolve();
       } else {
         const body = await response.json();
@@ -70,24 +109,40 @@ export class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   async logOut(): Promise<void> {
     try {
       const token = await this.prefs.retrieveData<string>("token");
-      if (!token) throw new Error("No token found");
+      
+      if (token) {
+        try {
+          const response = await fetch(`${this.baseUrl}/logout`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-      const response = await fetch(`${this.baseUrl}/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.status === 201) {
-        await this.prefs.removeData("token");
-        await this.prefs.removeData("refreshToken");
-        console.log("Logged out successfully");
-        return Promise.resolve();
-      } else {
-        const body = await response.json();
-        throw new Error(`Logout error: ${body.message}`);
+          if (response.status === 201) {
+            console.log("✅ Logout successful from server");
+          } else {
+            console.warn("⚠️ Server logout failed, but clearing local data");
+          }
+        } catch (e) {
+          console.warn("⚠️ Could not reach server for logout, but clearing local data");
+        }
       }
+      
+      // Always clear local data regardless of server response
+      await this.prefs.removeData("token");
+      await this.prefs.removeData("refreshToken");
+      await this.prefs.removeData("userData");
+      console.log("✅ Local data cleared");
+      return Promise.resolve();
     } catch (e: any) {
       console.error("Logout failed", e);
+      // Even if there's an error, try to clear local data
+      try {
+        await this.prefs.removeData("token");
+        await this.prefs.removeData("refreshToken");
+        await this.prefs.removeData("userData");
+      } catch (clearError) {
+        console.error("Failed to clear data:", clearError);
+      }
       throw e;
     }
   }
