@@ -5,11 +5,12 @@ import { createStackNavigator } from "@react-navigation/stack";
 import { useAuth } from "./features/auth/presentation/context/authContext";
 import LoginScreen from "./features/auth/presentation/screens/LoginScreen";
 import SignupScreen from "./features/auth/presentation/screens/SignupScreen";
+import CourseDetailsScreen from "./features/courses/presentation/screens/CourseDetailsScreen";
 import CourseListScreen from "./features/courses/presentation/screens/CourseListScreen";
+import CourseManagementScreen from "./features/courses/presentation/screens/CourseManagementScreen";
 import CreateCourseScreen from "./features/courses/presentation/screens/CreateCourseScreen";
 import AddProductScreen from "./features/products/presentation/screens/AddProductScreen";
 import UpdateProductScreen from "./features/products/presentation/screens/UpdateProductScreen";
-
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -49,6 +50,22 @@ export default function AuthFlow() {
               title: "Crear Curso",
               headerShown: true,
               presentation: 'modal'
+            }}
+          />
+          <Stack.Screen
+            name="CourseManagement"
+            component={CourseManagementScreen}
+            options={{
+              title: "Gestionar Curso",
+              headerShown: true,
+            }}
+          />
+          <Stack.Screen
+            name="CourseDetails"
+            component={CourseDetailsScreen}
+            options={{
+              title: "Detalles del Curso",
+              headerShown: true,
             }}
           />
           <Stack.Screen
