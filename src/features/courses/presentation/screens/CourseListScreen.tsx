@@ -1,17 +1,35 @@
 import { useAuth } from "@/src/features/auth/presentation/context/authContext";
+import {
+    CourseCard,
+    CourseHeader,
+    CourseStats,
+    CourseTabs,
+    EmptyState,
+    ErrorAlert,
+    InvitationCodeInput
+} from "@/src/shared/components";
 import { useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { Button, Card, Chip, FAB, Text, TextInput } from "react-native-paper";
+import { FAB, useTheme } from "react-native-paper";
 import { useCourses } from "../context/courseContext";
 
 type CourseTab = "available" | "created" | "enrolled";
 
 export default function CourseListScreen({ navigation }: { navigation: any }) {
-  const { availableCourses, createdCourses, enrolledCourses, loading, error, refreshCourses, joinCourse } = useCourses();
-  const { logout } = useAuth();
+  const { 
+    availableCourses, 
+    createdCourses, 
+    enrolledCourses, 
+    loading, 
+    error, 
+    refreshCourses, 
+    joinCourse 
+  } = useCourses();
+  const { logout, user } = useAuth();
+  const theme = useTheme();
   const [activeTab, setActiveTab] = useState<CourseTab>("created");
   const [invitationCode, setInvitationCode] = useState("");
-
+  const [joiningCourse, setJoiningCourse] = useState(false);
 
   const getCurrentCourses = () => {
     switch (activeTab) {
@@ -25,157 +43,167 @@ export default function CourseListScreen({ navigation }: { navigation: any }) {
   };
 
   const handleJoinCourse = async () => {
-    console.log("Joining course with code:", invitationCode);
-    alert("Funcionalidad de código de invitación pendiente");
-    setInvitationCode("");
-  };
-
-  const handleEnterCourse = async (courseId: string) => {
+    if (!invitationCode.trim()) return;
+    
+    setJoiningCourse(true);
     try {
-      await joinCourse(courseId);
-      alert("Te has inscrito exitosamente al curso");
+      console.log("Joining course with code:", invitationCode);
+      // TODO: Implement actual join course functionality
+      alert("Funcionalidad de código de invitación pendiente");
+      setInvitationCode("");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Error al inscribirse al curso");
+      console.error("Error joining course:", error);
+      alert("Error al unirse al curso");
+    } finally {
+      setJoiningCourse(false);
     }
   };
 
-  const renderCourseCard = (course: any) => (
-    <Card style={styles.courseCard} key={course._id}>
-      <Card.Content>
-        <Text variant="titleLarge" style={styles.courseTitle}>
-          {course.name}
-        </Text>
-        <Text variant="bodyMedium" style={styles.courseDescription}>
-          {course.description}
-        </Text>
-      </Card.Content>
-      <Card.Actions>
-        <Button 
-          mode="contained" 
-          onPress={() => {
-            if (activeTab === "available") {
-              handleEnterCourse(course._id);
-            } else {
-              console.log("Enter course", course._id);
-            }
-          }}
-        >
-          {activeTab === "available" ? "Inscribirse" : "Entrar"}
-        </Button>
-      </Card.Actions>
-    </Card>
+  const handleCourseAction = async (courseId: string) => {
+    try {
+      if (activeTab === "available") {
+        await joinCourse(courseId);
+        alert("Te has inscrito exitosamente al curso");
+      } else if (activeTab === "created") {
+        // Navigate to course management
+        navigation.navigate("CourseManagement", { courseId });
+      }
+    } catch (error) {
+      console.error("Course action error:", error);
+      alert(error instanceof Error ? error.message : "Error al realizar la acción");
+    }
+  };
+
+  const handleEnterCourse = (courseId: string) => {
+    // Navigate to course details/content
+    navigation.navigate("CourseDetails", { courseId });
+  };
+
+  const handleLogout = async () => {
+    try {
+      console.log("Logout button pressed");
+      await logout();
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
+
+  const handleRefresh = () => {
+    refreshCourses();
+  };
+
+  const handleCreateCourse = () => {
+    navigation.navigate("CreateCourse");
+  };
+
+  const handleViewAvailableCourses = () => {
+    setActiveTab("available");
+  };
+
+  const renderCourseCard = ({ item }: { item: any }) => (
+    <CourseCard
+      course={item}
+      type={activeTab}
+      onAction={handleCourseAction}
+      onEnter={handleEnterCourse}
+      loading={loading}
+    />
   );
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text variant="headlineMedium" style={styles.title}>
-          Cursos
-        </Text>
-        <View style={styles.headerActions}>
-          <Button 
-            mode="text" 
-            onPress={() => refreshCourses()} 
-            icon="refresh"
-            disabled={loading}
-          >
-            Recargar
-          </Button>
-          <Button 
-            onPress={() => {
-              console.log("Logout button pressed");
-              logout().catch(err => {
-                console.error("Logout error:", err);
-              });
-            }} 
-            icon="logout"
-          >
-            Salir
-          </Button>
+  const renderContent = () => {
+    const courses = getCurrentCourses();
+    
+    if (loading) {
+      return (
+        <View style={styles.centerContainer}>
+          <EmptyState 
+            type={activeTab} 
+            onAction={activeTab === "available" ? handleRefresh : undefined}
+            actionLabel="Recargar"
+          />
         </View>
-      </View>
+      );
+    }
+
+    if (courses.length === 0) {
+      return (
+        <EmptyState 
+          type={activeTab}
+          onAction={
+            activeTab === "created" ? handleCreateCourse :
+            activeTab === "enrolled" ? handleViewAvailableCourses :
+            handleRefresh
+          }
+        />
+      );
+    }
+
+    return (
+        <FlatList
+          data={courses}
+          keyExtractor={(item) => item._id || Math.random().toString()}
+          renderItem={renderCourseCard}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+    );
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Header */}
+      <CourseHeader
+        onRefresh={handleRefresh}
+        onLogout={handleLogout}
+        loading={loading}
+        userEmail={user?.email}
+      />
+
+      {/* Course Stats */}
+      <CourseStats
+        created={createdCourses.length}
+        enrolled={enrolledCourses.length}
+        available={availableCourses.length}
+      />
+
+      {/* Error Alert */}
+      {error && (
+        <ErrorAlert 
+          message={error} 
+          visible={!!error}
+          onDismiss={() => {}} 
+        />
+      )}
 
       {/* Invitation Code Input */}
-      <View style={styles.invitationContainer}>
-        <TextInput
-          mode="outlined"
-          label="Ingresa código de invitación"
-          value={invitationCode}
-          onChangeText={setInvitationCode}
-          style={styles.invitationInput}
-          left={<TextInput.Icon icon="grid" />}
-        />
-        <Button
-          mode="contained"
-          onPress={handleJoinCourse}
-          style={styles.joinButton}
-          disabled={!invitationCode.trim()}
-        >
-          Unirse
-        </Button>
-      </View>
-
-      {/* Debug Info - Only show error if exists */}
-      {error && (
-        <View style={{ padding: 8, backgroundColor: '#ffebee' }}>
-          <Text style={{ fontSize: 12, color: 'red' }}>Error: {error}</Text>
-        </View>
-      )}
+      <InvitationCodeInput
+        code={invitationCode}
+        onCodeChange={setInvitationCode}
+        onJoin={handleJoinCourse}
+        loading={joiningCourse}
+      />
 
       {/* Tabs */}
-      <View style={styles.tabsContainer}>
-        <Chip
-          selected={activeTab === "created"}
-          onPress={() => setActiveTab("created")}
-          style={[styles.tab, activeTab === "created" && styles.tabActive]}
-        >
-          Creados
-        </Chip>
-        <Chip
-          selected={activeTab === "enrolled"}
-          onPress={() => setActiveTab("enrolled")}
-          style={[styles.tab, activeTab === "enrolled" && styles.tabActive]}
-        >
-          Inscritos
-        </Chip>
-        <Chip
-          selected={activeTab === "available"}
-          onPress={() => setActiveTab("available")}
-          style={[styles.tab, activeTab === "available" && styles.tabActive]}
-        >
-          Disponibles
-        </Chip>
-      </View>
+      <CourseTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        counts={{
+          created: createdCourses.length,
+          enrolled: enrolledCourses.length,
+          available: availableCourses.length,
+        }}
+      />
 
       {/* Course List */}
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <Text>Cargando cursos...</Text>
-        </View>
-      ) : getCurrentCourses().length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Text variant="bodyMedium" style={styles.emptyText}>
-            {activeTab === "available" && "No hay cursos disponibles para inscribirse."}
-            {activeTab === "created" && "No has creado ningún curso aún."}
-            {activeTab === "enrolled" && "No estás inscrito en ningún curso."}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={getCurrentCourses()}
-          keyExtractor={(item) => item._id}
-          renderItem={({ item }) => renderCourseCard(item)}
-          contentContainerStyle={styles.listContent}
-        />
-      )}
+      {renderContent()}
 
       {/* FAB to create course */}
       {activeTab === "created" && (
         <FAB
           icon="plus"
-          style={styles.fab}
-          onPress={() => navigation.navigate("CreateCourse")}
+          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          onPress={handleCreateCourse}
+          label="Crear Curso"
         />
       )}
     </View>
@@ -185,71 +213,21 @@ export default function CourseListScreen({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingTop: 40,
-  },
-  headerActions: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  title: {
-    fontWeight: "bold",
-  },
-  invitationContainer: {
-    flexDirection: "row",
-    padding: 16,
-    gap: 8,
-  },
-  invitationInput: {
-    flex: 1,
-  },
-  joinButton: {
-    justifyContent: "center",
-  },
-  tabsContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  tab: {
-    borderRadius: 20,
-  },
-  tabActive: {
-    backgroundColor: "#6366f1",
-  },
-  listContent: {
-    padding: 16,
-  },
-  courseCard: {
-    marginBottom: 16,
-    borderRadius: 12,
-  },
-  courseTitle: {
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  courseDescription: {
-    color: "#666",
   },
   centerContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  emptyText: {
-    color: "#999",
+  listContent: {
+    padding: 16,
+    paddingBottom: 100, // Space for FAB
   },
   fab: {
-    position: "absolute",
+    position: 'absolute',
     right: 16,
     bottom: 80,
+    borderRadius: 16,
   },
 });
 
