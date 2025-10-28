@@ -40,12 +40,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    getCurrentUserUseCase.execute().then((user: React.SetStateAction<AuthUser | null>) => {
+    getCurrentUserUseCase.execute().then((user: AuthUser | null) => {
       setUser(user);
       setIsLoggedIn(!!user);
+    }).catch((error) => {
+      console.error("Error getting current user:", error);
+      setUser(null);
+      setIsLoggedIn(false);
     });
-
-
   }, [getCurrentUserUseCase]);
 
   const login = async (email: string, password: string) => {
@@ -57,9 +59,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signup = async (email: string, password: string) => {
-    const newUser = await signupUseCase.execute(email, password);
-    setUser(newUser);
-    setIsLoggedIn(true);
+    console.log("AuthContext - Starting signup for:", email);
+    try {
+      const newUser = await signupUseCase.execute(email, password);
+      console.log("AuthContext - Signup successful, user data:", newUser);
+      
+      // Solo marcar como logueado si el usuario tiene tokens válidos
+      // Si solo tiene email, significa que el auto-login falló
+      if (newUser._id || newUser.id) {
+        console.log("AuthContext - User has valid tokens, logging in");
+        setUser(newUser);
+        setIsLoggedIn(true);
+      } else {
+        console.log("AuthContext - User needs email verification, staying on login screen");
+        // No marcar como logueado - el usuario debe verificar email primero
+      }
+    } catch (error) {
+      console.error("AuthContext - Signup failed:", error);
+      throw error; // Re-throw para que la UI pueda manejarlo
+    }
   };
 
   const logout = async () => {
