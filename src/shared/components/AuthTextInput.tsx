@@ -11,6 +11,9 @@ interface AuthTextInputProps {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   error?: string;
   disabled?: boolean;
+  placeholder?: string;
+  multiline?: boolean;
+  numberOfLines?: number;
 }
 
 export const AuthTextInput: React.FC<AuthTextInputProps> = ({
@@ -22,6 +25,9 @@ export const AuthTextInput: React.FC<AuthTextInputProps> = ({
   autoCapitalize = 'sentences',
   error,
   disabled = false,
+  placeholder,
+  multiline = false,
+  numberOfLines = 1,
 }) => {
   const theme = useTheme();
 
@@ -37,6 +43,9 @@ export const AuthTextInput: React.FC<AuthTextInputProps> = ({
         autoCapitalize={autoCapitalize}
         disabled={disabled}
         error={!!error}
+        placeholder={placeholder}
+        multiline={multiline}
+        numberOfLines={numberOfLines}
         style={[
           styles.input,
           error && { borderColor: theme.colors.error }
