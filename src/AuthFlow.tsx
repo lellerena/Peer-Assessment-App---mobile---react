@@ -7,6 +7,10 @@ import LoginScreen from "./features/auth/presentation/screens/LoginScreen";
 import SignupScreen from "./features/auth/presentation/screens/SignupScreen";
 import CourseListScreen from "./features/courses/presentation/screens/CourseListScreen";
 import CreateCourseScreen from "./features/courses/presentation/screens/CreateCourseScreen";
+import CourseDetailScreen from "./features/courses/presentation/screens/CourseDetailScreen";
+import CategoryDetailScreen from "./features/categories/presentation/screens/CategoryDetailScreen";
+import GroupDetailScreen from "./features/groups/presentation/screens/GroupDetailScreen";
+import ActivitySubmissionScreen from "./features/submissions/presentation/screens/ActivitySubmissionScreen";
 import AddProductScreen from "./features/products/presentation/screens/AddProductScreen";
 import UpdateProductScreen from "./features/products/presentation/screens/UpdateProductScreen";
 
@@ -42,6 +46,29 @@ export default function AuthFlow() {
       {isLoggedIn ? (
         <>
           <Stack.Screen name="App" component={ContentTabs} />
+          <Stack.Screen
+            name="CourseDetail"
+            component={CourseDetailScreen}
+            options={{ headerShown: true, title: "Detalle del curso" }}
+          />
+          <Stack.Screen
+            name="CategoryDetail"
+            component={CategoryDetailScreen}
+            options={{ headerShown: true, title: "Categoría" }}
+          />
+          <Stack.Screen
+            name="GroupDetail"
+            component={GroupDetailScreen}
+            options={{ headerShown: true, title: "Detalle del grupo" }}
+          />
+          <Stack.Screen
+            name="ActivitySubmission"
+            component={ActivitySubmissionScreen}
+            options={({ route }) => ({ 
+              headerShown: true, 
+              title: route.params?.activity ? `Entrega: ${route.params.activity.title}` : "Entrega" 
+            })}
+          />
           <Stack.Screen
             name="CreateCourse"
             component={CreateCourseScreen}

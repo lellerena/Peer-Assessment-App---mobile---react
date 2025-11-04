@@ -23,6 +23,42 @@ import { GetProductByIdUseCase } from "@/src/features/products/domain/usecases/G
 import { GetProductsUseCase } from "@/src/features/products/domain/usecases/GetProductsUseCase";
 import { UpdateProductUseCase } from "@/src/features/products/domain/usecases/UpdateProductUseCase";
 import { Container } from "./container";
+// Category module imports
+import { CategoryRemoteDataSourceImpl } from "@/src/features/categories/data/datasources/CategoryRemoteDataSourceImpl";
+import { CategoryRepositoryImpl } from "@/src/features/categories/data/repositories/CategoryRepositoryImpl";
+import { GetCategoriesByCourseUseCase } from "@/src/features/categories/domain/usecases/GetCategoriesByCourseUseCase";
+import { CreateCategoryUseCase } from "@/src/features/categories/domain/usecases/CreateCategoryUseCase";
+import { UpdateCategoryUseCase } from "@/src/features/categories/domain/usecases/UpdateCategoryUseCase";
+import { DeleteCategoryUseCase } from "@/src/features/categories/domain/usecases/DeleteCategoryUseCase";
+import { GetGroupsByCategoryUseCase } from "@/src/features/categories/domain/usecases/GetGroupsByCategoryUseCase";
+import { CreateGroupUseCase } from "@/src/features/categories/domain/usecases/CreateGroupUseCase";
+import { UpdateGroupUseCase } from "@/src/features/categories/domain/usecases/UpdateGroupUseCase";
+import { DeleteGroupUseCase } from "@/src/features/categories/domain/usecases/DeleteGroupUseCase";
+import { AddStudentToGroupUseCase } from "@/src/features/categories/domain/usecases/AddStudentToGroupUseCase";
+import { RemoveStudentFromGroupUseCase } from "@/src/features/categories/domain/usecases/RemoveStudentFromGroupUseCase";
+// Groups separate feature
+import { GroupRemoteDataSourceImpl } from "@/src/features/groups/data/datasources/GroupRemoteDataSourceImpl";
+import { GroupRepositoryImpl } from "@/src/features/groups/data/repositories/GroupRepositoryImpl";
+import { GetGroupsByCategoryUseCase_v2 } from "@/src/features/groups/domain/usecases/GetGroupsByCategoryUseCase";
+import { CreateGroupUseCase_v2 } from "@/src/features/groups/domain/usecases/CreateGroupUseCase";
+import { UpdateGroupUseCase_v2 } from "@/src/features/groups/domain/usecases/UpdateGroupUseCase";
+import { DeleteGroupUseCase_v2 } from "@/src/features/groups/domain/usecases/DeleteGroupUseCase";
+import { AddStudentToGroupUseCase_v2 } from "@/src/features/groups/domain/usecases/AddStudentToGroupUseCase";
+import { RemoveStudentFromGroupUseCase_v2 } from "@/src/features/groups/domain/usecases/RemoveStudentFromGroupUseCase";
+// Activities module
+import { ActivityRemoteDataSourceImpl } from "@/src/features/activities/data/datasources/ActivityRemoteDataSourceImpl";
+import { ActivityRepositoryImpl } from "@/src/features/activities/data/repositories/ActivityRepositoryImpl";
+import { GetActivitiesByCourseUseCase } from "@/src/features/activities/domain/usecases/GetActivitiesByCourseUseCase";
+import { GetActivitiesByCategoryUseCase } from "@/src/features/activities/domain/usecases/GetActivitiesByCategoryUseCase";
+import { CreateActivityUseCase } from "@/src/features/activities/domain/usecases/CreateActivityUseCase";
+import { UpdateActivityUseCase } from "@/src/features/activities/domain/usecases/UpdateActivityUseCase";
+import { DeleteActivityUseCase } from "@/src/features/activities/domain/usecases/DeleteActivityUseCase";
+// Submissions module
+import { SubmissionRemoteDataSourceImpl } from "@/src/features/submissions/data/datasources/SubmissionRemoteDataSourceImpl";
+import { SubmissionRepositoryImpl } from "@/src/features/submissions/data/repositories/SubmissionRepositoryImpl";
+import { CreateSubmissionUseCase } from "@/src/features/submissions/domain/usecases/CreateSubmissionUseCase";
+import { UpdateSubmissionUseCase } from "@/src/features/submissions/domain/usecases/UpdateSubmissionUseCase";
+import { GetSubmissionByActivityAndStudentUseCase } from "@/src/features/submissions/domain/usecases/GetSubmissionByActivityAndStudentUseCase";
 
 const DIContext = createContext<Container | null>(null);
 
@@ -62,6 +98,54 @@ export function DIProvider({ children }: { children: React.ReactNode }) {
             .register(TOKENS.GetEnrolledCoursesUC, new GetEnrolledCoursesUseCase(courseRepo))
             .register(TOKENS.CreateCourseUC, new CreateCourseUseCase(courseRepo))
             .register(TOKENS.JoinCourseUC, new JoinCourseUseCase(courseRepo));
+
+        // Categories wiring
+        const categoryRemoteDS = new CategoryRemoteDataSourceImpl(authDS);
+        const categoryRepo = new CategoryRepositoryImpl(categoryRemoteDS);
+        c.register(TOKENS.CategoryRemoteDS, categoryRemoteDS)
+            .register(TOKENS.CategoryRepo, categoryRepo)
+            .register(TOKENS.GetCategoriesByCourseUC, new GetCategoriesByCourseUseCase(categoryRepo))
+            .register(TOKENS.CreateCategoryUC, new CreateCategoryUseCase(categoryRepo))
+            .register(TOKENS.UpdateCategoryUC, new UpdateCategoryUseCase(categoryRepo))
+            .register(TOKENS.DeleteCategoryUC, new DeleteCategoryUseCase(categoryRepo))
+            .register(TOKENS.GetGroupsByCategoryUC, new GetGroupsByCategoryUseCase(categoryRepo))
+            .register(TOKENS.CreateGroupUC, new CreateGroupUseCase(categoryRepo))
+            .register(TOKENS.UpdateGroupUC, new UpdateGroupUseCase(categoryRepo))
+            .register(TOKENS.DeleteGroupUC, new DeleteGroupUseCase(categoryRepo))
+            .register(TOKENS.AddStudentToGroupUC, new AddStudentToGroupUseCase(categoryRepo))
+            .register(TOKENS.RemoveStudentFromGroupUC, new RemoveStudentFromGroupUseCase(categoryRepo));
+
+        // Groups DI
+        const groupRemoteDS = new GroupRemoteDataSourceImpl(authDS);
+        const groupRepo = new GroupRepositoryImpl(groupRemoteDS);
+        c.register(TOKENS.GroupRemoteDS, groupRemoteDS)
+            .register(TOKENS.GroupRepo, groupRepo)
+            .register(TOKENS.GetGroupsByCategoryUC_v2, new GetGroupsByCategoryUseCase_v2(groupRepo))
+            .register(TOKENS.CreateGroupUC_v2, new CreateGroupUseCase_v2(groupRepo))
+            .register(TOKENS.UpdateGroupUC_v2, new UpdateGroupUseCase_v2(groupRepo))
+            .register(TOKENS.DeleteGroupUC_v2, new DeleteGroupUseCase_v2(groupRepo))
+            .register(TOKENS.AddStudentToGroupUC_v2, new AddStudentToGroupUseCase_v2(groupRepo))
+            .register(TOKENS.RemoveStudentFromGroupUC_v2, new RemoveStudentFromGroupUseCase_v2(groupRepo));
+
+        // Activities DI
+        const activityRemoteDS = new ActivityRemoteDataSourceImpl(authDS);
+        const activityRepo = new ActivityRepositoryImpl(activityRemoteDS);
+        c.register(TOKENS.ActivityRemoteDS, activityRemoteDS)
+            .register(TOKENS.ActivityRepo, activityRepo)
+            .register(TOKENS.GetActivitiesByCourseUC, new GetActivitiesByCourseUseCase(activityRepo))
+            .register(TOKENS.GetActivitiesByCategoryUC, new GetActivitiesByCategoryUseCase(activityRepo))
+            .register(TOKENS.CreateActivityUC, new CreateActivityUseCase(activityRepo))
+            .register(TOKENS.UpdateActivityUC, new UpdateActivityUseCase(activityRepo))
+            .register(TOKENS.DeleteActivityUC, new DeleteActivityUseCase(activityRepo));
+
+        // Submissions DI
+        const submissionRemoteDS = new SubmissionRemoteDataSourceImpl(authDS);
+        const submissionRepo = new SubmissionRepositoryImpl(submissionRemoteDS);
+        c.register(TOKENS.SubmissionRemoteDS, submissionRemoteDS)
+            .register(TOKENS.SubmissionRepo, submissionRepo)
+            .register(TOKENS.CreateSubmissionUC, new CreateSubmissionUseCase(submissionRepo))
+            .register(TOKENS.UpdateSubmissionUC, new UpdateSubmissionUseCase(submissionRepo))
+            .register(TOKENS.GetSubmissionByActivityAndStudentUC, new GetSubmissionByActivityAndStudentUseCase(submissionRepo));
 
         return c;
     }, []);

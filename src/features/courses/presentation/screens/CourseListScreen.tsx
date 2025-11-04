@@ -56,7 +56,7 @@ export default function CourseListScreen({ navigation }: { navigation: any }) {
             if (activeTab === "available") {
               handleEnterCourse(course._id);
             } else {
-              console.log("Enter course", course._id);
+              navigation.navigate("CourseDetail", { course });
             }
           }}
         >
