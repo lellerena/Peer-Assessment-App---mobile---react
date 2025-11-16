@@ -172,12 +172,18 @@ const styles = StyleSheet.create({
         padding: 16
     },
     card: {
-        borderRadius: 16,
-        padding: 8
+        borderRadius: 20,
+        padding: 12,
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12
     },
     avatar: {
         alignSelf: 'center',
-        marginBottom: 16
+        marginBottom: 20,
+        elevation: 2
     },
     title: {
         marginBottom: 8,
