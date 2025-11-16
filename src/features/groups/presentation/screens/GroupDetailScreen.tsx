@@ -1,7 +1,7 @@
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { StyleSheet, View, ScrollView, FlatList } from "react-native";
-import { Card, Text, Chip, IconButton, Button } from "react-native-paper";
+import { Card, Text, Chip, IconButton, Button, Avatar, useTheme, Divider } from "react-native-paper";
 import { Group } from "@/src/features/groups/domain/entities/Group";
 import { Category } from "@/src/features/categories/domain/entities/Category";
 import { useDI } from "@/src/core/di/DIProvider";
@@ -17,6 +17,7 @@ export default function GroupDetailScreen() {
   const category: Category = route.params?.category;
   const di = useDI();
   const { user } = useAuth();
+  const theme = useTheme();
   const getActivitiesByCategoryUC = di.resolve<GetActivitiesByCategoryUseCase>(TOKENS.GetActivitiesByCategoryUC);
   
   const studentId = (user as any)?.id || (user as any)?._id;
@@ -52,17 +53,34 @@ export default function GroupDetailScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Card style={styles.headerCard}>
         <Card.Content>
-          <Text variant="headlineSmall" style={{ marginBottom: 8 }}>{group.name}</Text>
-          <Text style={{ marginBottom: 4 }}>Categoría: {category?.name}</Text>
-          <Text style={{ marginBottom: 4 }}>Método: {category?.groupingMethod}</Text>
-          <Text style={{ marginBottom: 8 }}>Tamaño máximo: {category?.groupSize}</Text>
-          <Text variant="titleMedium" style={{ marginBottom: 8 }}>Estudiantes ({group.studentIds.length})</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <Avatar.Icon icon="account-group" size={56} style={{ backgroundColor: theme.colors.primaryContainer, marginRight: 16 }} />
+            <View style={{ flex: 1 }}>
+              <Text variant="headlineSmall" style={{ marginBottom: 4, color: theme.colors.onSurface }}>{group.name}</Text>
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>Categoría: {category?.name}</Text>
+            </View>
+          </View>
+          
+          <Divider style={{ marginVertical: 12 }} />
+          
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+            <Chip icon="cog" style={{ backgroundColor: theme.colors.secondaryContainer }}>
+              {category?.groupingMethod}
+            </Chip>
+            <Chip icon="account-multiple" style={{ backgroundColor: theme.colors.tertiaryContainer }}>
+              Max: {category?.groupSize}
+            </Chip>
+          </View>
+          
+          <Text variant="titleMedium" style={{ marginBottom: 12, marginTop: 8, color: theme.colors.onSurface }}>👥 Estudiantes ({group.studentIds.length})</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {group.studentIds.map((sid) => (
-              <Chip key={sid}>{`Usuario ${sid.slice(0,8)}`}</Chip>
+              <Chip key={sid} avatar={<Avatar.Text size={24} label={sid.charAt(0).toUpperCase()} />}>
+                {`Usuario ${sid.slice(0,8)}`}
+              </Chip>
             ))}
           </View>
         </Card.Content>
@@ -70,14 +88,19 @@ export default function GroupDetailScreen() {
 
       <Card style={styles.card}>
         <Card.Content>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <Text variant="titleLarge">Actividades ({activities.length})</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>📋 Actividades ({activities.length})</Text>
             <IconButton icon="refresh" onPress={refreshActivities} disabled={loading} />
           </View>
           {loading ? (
-            <Text style={{ color: "#6b7280" }}>Cargando actividades...</Text>
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text style={{ color: theme.colors.onSurfaceVariant }}>Cargando actividades...</Text>
+            </View>
           ) : activities.length === 0 ? (
-            <Text style={{ color: "#6b7280" }}>No hay actividades para esta categoría</Text>
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Avatar.Icon icon="clipboard-text-off" size={64} style={{ backgroundColor: 'transparent', marginBottom: 8 }} />
+              <Text style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>No hay actividades para esta categoría</Text>
+            </View>
           ) : (
             <View style={{ maxHeight: 600 }}>
               <FlatList
@@ -85,13 +108,13 @@ export default function GroupDetailScreen() {
                 keyExtractor={(a) => a._id || a.title}
                 scrollEnabled={true}
                 renderItem={({ item }) => (
-                  <Card style={{ marginBottom: 12, borderRadius: 12 }}>
+                  <Card style={{ marginBottom: 16, borderRadius: 16, elevation: 1 }}>
                     <Card.Content>
-                      <Text variant="titleMedium" style={{ marginBottom: 4 }}>{item.title}</Text>
-                      {item.description && <Text variant="bodyMedium" style={{ marginTop: 4, color: "#6b7280", marginBottom: 8 }}>{item.description}</Text>}
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-                        {item.date && <Chip style={{ backgroundColor: "#6366f1" }} textStyle={{ color: "#fff" }}>Due: {formatDate(item.date)}</Chip>}
-                        {category?.name && <Chip>{`Category: ${category.name}`}</Chip>}
+                      <Text variant="titleMedium" style={{ marginBottom: 4, color: theme.colors.onSurface }}>{item.title}</Text>
+                      {item.description && <Text variant="bodyMedium" style={{ marginTop: 4, color: theme.colors.onSurfaceVariant, marginBottom: 8 }}>{item.description}</Text>}
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                        {item.date && <Chip icon="calendar" style={{ backgroundColor: theme.colors.primaryContainer }}>Due: {formatDate(item.date)}</Chip>}
+                        {category?.name && <Chip icon="folder" style={{ backgroundColor: theme.colors.secondaryContainer }}>{category.name}</Chip>}
                       </View>
                       {belongsToGroup && (
                         <View style={{ alignItems: "flex-end" }}>
@@ -99,14 +122,15 @@ export default function GroupDetailScreen() {
                             icon="upload"
                             mode="contained"
                             onPress={() => navigation.navigate("ActivitySubmission", { activity: item, group })}
-                            style={{ backgroundColor: "#6366f1" }}
                           >
                             Entregar
                           </Button>
                         </View>
                       )}
                       {!belongsToGroup && (
-                        <Text style={{ color: "#b91c1c", fontSize: 12, marginTop: 8 }}>No perteneces a este grupo</Text>
+                        <Chip icon="alert" style={{ marginTop: 8, backgroundColor: theme.colors.errorContainer }}>
+                          <Text style={{ color: theme.colors.onErrorContainer, fontSize: 12 }}>No perteneces a este grupo</Text>
+                        </Chip>
                       )}
                     </Card.Content>
                   </Card>
@@ -121,8 +145,8 @@ export default function GroupDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  headerCard: { borderRadius: 12, marginBottom: 16 },
-  card: { borderRadius: 12 },
+  container: { flex: 1, padding: 20, backgroundColor: '#FAFAFA' },
+  headerCard: { borderRadius: 16, marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 },
+  card: { borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
 });
 

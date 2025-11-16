@@ -365,16 +365,16 @@ export default function CourseDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  tabsContainer: { flexDirection: "row", padding: 16, gap: 8, flexWrap: "wrap" },
-  tab: { borderRadius: 20 },
-  tabActive: { backgroundColor: "#6366f1" },
-  content: { padding: 16, gap: 16 },
-  block: { borderRadius: 12 },
-  listContainer: { flex: 1, padding: 16 },
-  participantCard: { marginBottom: 12, borderRadius: 12 },
+  tabsContainer: { flexDirection: "row", padding: 16, paddingTop: 12, gap: 8, flexWrap: "wrap", backgroundColor: 'transparent' },
+  tab: { borderRadius: 20, elevation: 1 },
+  tabActive: { backgroundColor: "#6750A4", elevation: 3 },
+  content: { padding: 20, gap: 20 },
+  block: { borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
+  listContainer: { flex: 1, padding: 20 },
+  participantCard: { marginBottom: 16, borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
   participantContent: { flexDirection: "row", alignItems: "center" },
-  placeholder: { flex: 1, alignItems: "center", justifyContent: "center" },
-  fab: { position: "absolute", right: 16, bottom: 16 },
+  placeholder: { flex: 1, alignItems: "center", justifyContent: "center", padding: 40 },
+  fab: { position: "absolute", right: 20, bottom: 20, elevation: 6 },
 });
 
 
