@@ -59,6 +59,14 @@ import { SubmissionRepositoryImpl } from "@/src/features/submissions/data/reposi
 import { CreateSubmissionUseCase } from "@/src/features/submissions/domain/usecases/CreateSubmissionUseCase";
 import { UpdateSubmissionUseCase } from "@/src/features/submissions/domain/usecases/UpdateSubmissionUseCase";
 import { GetSubmissionByActivityAndStudentUseCase } from "@/src/features/submissions/domain/usecases/GetSubmissionByActivityAndStudentUseCase";
+import { GetSubmissionsByActivityUseCase } from "@/src/features/submissions/domain/usecases/GetSubmissionsByActivityUseCase";
+// Grades module
+import { GradeRemoteDataSourceImpl } from "@/src/features/grades/data/datasources/GradeRemoteDataSourceImpl";
+import { GradeRepositoryImpl } from "@/src/features/grades/data/repositories/GradeRepositoryImpl";
+import { GetGradeByActivityAndStudentUseCase } from "@/src/features/grades/domain/usecases/GetGradeByActivityAndStudentUseCase";
+import { GetGradesByCourseUseCase } from "@/src/features/grades/domain/usecases/GetGradesByCourseUseCase";
+import { GetGradesByActivityUseCase } from "@/src/features/grades/domain/usecases/GetGradesByActivityUseCase";
+import { SaveGradeUseCase } from "@/src/features/grades/domain/usecases/SaveGradeUseCase";
 
 const DIContext = createContext<Container | null>(null);
 
@@ -145,7 +153,18 @@ export function DIProvider({ children }: { children: React.ReactNode }) {
             .register(TOKENS.SubmissionRepo, submissionRepo)
             .register(TOKENS.CreateSubmissionUC, new CreateSubmissionUseCase(submissionRepo))
             .register(TOKENS.UpdateSubmissionUC, new UpdateSubmissionUseCase(submissionRepo))
-            .register(TOKENS.GetSubmissionByActivityAndStudentUC, new GetSubmissionByActivityAndStudentUseCase(submissionRepo));
+            .register(TOKENS.GetSubmissionByActivityAndStudentUC, new GetSubmissionByActivityAndStudentUseCase(submissionRepo))
+            .register(TOKENS.GetSubmissionsByActivityUC, new GetSubmissionsByActivityUseCase(submissionRepo));
+
+        // Grades DI
+        const gradeRemoteDS = new GradeRemoteDataSourceImpl(authDS);
+        const gradeRepo = new GradeRepositoryImpl(gradeRemoteDS);
+        c.register(TOKENS.GradeRemoteDS, gradeRemoteDS)
+            .register(TOKENS.GradeRepo, gradeRepo)
+            .register(TOKENS.GetGradeByActivityAndStudentUC, new GetGradeByActivityAndStudentUseCase(gradeRepo))
+            .register(TOKENS.GetGradesByCourseUC, new GetGradesByCourseUseCase(gradeRepo))
+            .register(TOKENS.GetGradesByActivityUC, new GetGradesByActivityUseCase(gradeRepo))
+            .register(TOKENS.SaveGradeUC, new SaveGradeUseCase(gradeRepo));
 
         return c;
     }, []);

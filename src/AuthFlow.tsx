@@ -11,6 +11,7 @@ import CourseDetailScreen from "./features/courses/presentation/screens/CourseDe
 import CategoryDetailScreen from "./features/categories/presentation/screens/CategoryDetailScreen";
 import GroupDetailScreen from "./features/groups/presentation/screens/GroupDetailScreen";
 import ActivitySubmissionScreen from "./features/submissions/presentation/screens/ActivitySubmissionScreen";
+import ActivitySubmissionsScreen from "./features/submissions/presentation/screens/ActivitySubmissionsScreen";
 import AddProductScreen from "./features/products/presentation/screens/AddProductScreen";
 import UpdateProductScreen from "./features/products/presentation/screens/UpdateProductScreen";
 
@@ -67,6 +68,14 @@ export default function AuthFlow() {
             options={({ route }) => ({ 
               headerShown: true, 
               title: route.params?.activity ? `Entrega: ${route.params.activity.title}` : "Entrega" 
+            })}
+          />
+          <Stack.Screen
+            name="ActivitySubmissions"
+            component={ActivitySubmissionsScreen}
+            options={({ route }) => ({
+              headerShown: true,
+              title: route.params?.activity ? `Entregas: ${route.params.activity.title}` : "Entregas"
             })}
           />
           <Stack.Screen

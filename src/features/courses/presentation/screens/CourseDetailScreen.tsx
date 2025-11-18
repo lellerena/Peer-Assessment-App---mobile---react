@@ -12,8 +12,13 @@ import { DeleteCategoryUseCase } from '@/src/features/categories/domain/usecases
 import { GetCategoriesByCourseUseCase } from '@/src/features/categories/domain/usecases/GetCategoriesByCourseUseCase'
 import { UpdateCategoryUseCase } from '@/src/features/categories/domain/usecases/UpdateCategoryUseCase'
 import { CreateGroupUseCase_v2 } from '@/src/features/groups/domain/usecases/CreateGroupUseCase'
+import { GetGroupsByCategoryUseCase_v2 } from '@/src/features/groups/domain/usecases/GetGroupsByCategoryUseCase'
+import { GetGradesByCourseUseCase } from '@/src/features/grades/domain/usecases/GetGradesByCourseUseCase'
+import { GetGradesByActivityUseCase } from '@/src/features/grades/domain/usecases/GetGradesByActivityUseCase'
+import { Grade } from '@/src/features/grades/domain/entities/Grade'
+import { Group } from '@/src/features/groups/domain/entities/Group'
 import { useNavigation, useRoute } from '@react-navigation/native'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { FlatList, ScrollView, StyleSheet, View } from 'react-native'
 import {
     Avatar,
@@ -77,6 +82,15 @@ export default function CourseDetailScreen() {
     const createGroupUC = di.resolve<CreateGroupUseCase_v2>(
         TOKENS.CreateGroupUC_v2
     )
+    const getGroupsByCategoryUC = di.resolve<GetGroupsByCategoryUseCase_v2>(
+        TOKENS.GetGroupsByCategoryUC_v2
+    )
+    const getGradesByCourseUC = di.resolve<GetGradesByCourseUseCase>(
+        TOKENS.GetGradesByCourseUC
+    )
+    const getGradesByActivityUC = di.resolve<GetGradesByActivityUseCase>(
+        TOKENS.GetGradesByActivityUC
+    )
 
     const [categories, setCategories] = useState<Category[]>([])
     const [activities, setActivities] = useState<Activity[]>([])
@@ -99,6 +113,9 @@ export default function CourseDetailScreen() {
         'manual' | 'random' | 'selfAssigned'
     >('random')
     const [catSize, setCatSize] = useState('2')
+    const [allGroups, setAllGroups] = useState<Group[]>([])
+    const [allGrades, setAllGrades] = useState<Grade[]>([])
+    const [loadingReports, setLoadingReports] = useState(false)
 
     const refreshCategories = async () => {
         if (!course?._id) return
@@ -131,8 +148,50 @@ export default function CourseDetailScreen() {
         if (activeTab === 'activities') {
             refreshActivities().catch(() => {})
         }
+        if (activeTab === 'reports' && course?._id) {
+            // Set loading immediately to prevent showing "No hay actividades" before data loads
+            setLoadingReports(true)
+            // Reset allGrades to ensure we fetch fresh data from Roble
+            setAllGrades([])
+            loadReportsData().catch(() => {})
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, course?._id])
+
+    const loadReportsData = useCallback(async () => {
+        if (!course?._id) {
+            setLoadingReports(false)
+            return
+        }
+        try {
+            // Always load activities when loading reports - do this first
+            const activitiesData = await getActivitiesByCourseUC.execute(course._id)
+            setActivities(activitiesData)
+            console.log('Activities loaded for reports:', activitiesData.length)
+
+            // Load all groups from all categories
+            const groupsPromises = categories.map((cat) =>
+                getGroupsByCategoryUC.execute(cat._id!).catch(() => [] as Group[])
+            )
+            const groupsArrays = await Promise.all(groupsPromises)
+            const groups = groupsArrays.flat()
+            setAllGroups(groups)
+
+            // Always fetch fresh grades from Roble (never use local state)
+            console.log('Fetching all grades from Roble for course:', course._id)
+            const grades = await getGradesByCourseUC.execute(course._id)
+            console.log('Grades loaded from Roble:', grades.length, 'grades:', grades)
+            // Ensure we're setting the grades from Roble, not any local state
+            setAllGrades(grades)
+            console.log('allGrades state updated with', grades.length, 'grades')
+        } catch (error) {
+            console.error('Error loading reports data:', error)
+            // On error, ensure we don't have stale data
+            setAllGrades([])
+        } finally {
+            setLoadingReports(false)
+        }
+    }, [course?._id, categories, getActivitiesByCourseUC, getGroupsByCategoryUC, getGradesByCourseUC])
 
     const participants = useMemo(() => {
         if (!course)
@@ -731,24 +790,30 @@ export default function CourseDetailScreen() {
                                                 )}
                                             </Chip>
                                         )}
-                                        <View
-                                            style={{
-                                                marginTop: 8,
-                                                alignItems: 'flex-end'
-                                            }}
-                                        >
-                                            <Button
-                                                icon="clipboard-check"
-                                                mode="contained"
-                                                onPress={() =>
-                                                    alert(
-                                                        'Ver Entregas - próximamente'
-                                                    )
-                                                }
+                                        {isTeacher && (
+                                            <View
+                                                style={{
+                                                    marginTop: 8,
+                                                    alignItems: 'flex-end'
+                                                }}
                                             >
-                                                Ver Entregas
-                                            </Button>
-                                        </View>
+                                                <Button
+                                                    icon="clipboard-check"
+                                                    mode="contained"
+                                                    onPress={() =>
+                                                        navigation.navigate(
+                                                            'ActivitySubmissions',
+                                                            {
+                                                                activity: item,
+                                                                course
+                                                            }
+                                                        )
+                                                    }
+                                                >
+                                                    Ver entregas
+                                                </Button>
+                                            </View>
+                                        )}
                                     </Card.Content>
                                 </Card>
                             )}
@@ -834,9 +899,375 @@ export default function CourseDetailScreen() {
                 </View>
             )}
 
+            {activeTab === 'reports' && (
+                <View style={{ flex: 1 }}>
+                    <ScrollView
+                        style={{ flex: 1 }}
+                        contentContainerStyle={styles.reportsContent}
+                        showsVerticalScrollIndicator={true}
+                        bounces={true}
+                        scrollEnabled={true}
+                        nestedScrollEnabled={true}
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        <View
+                            style={{
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: 16
+                            }}
+                        >
+                            <Text variant="titleLarge">Reportes de Calificaciones</Text>
+                            <IconButton
+                                icon="refresh"
+                                onPress={loadReportsData}
+                                disabled={loadingReports}
+                            />
+                        </View>
+                        {loadingReports ? (
+                            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                                <Text style={{ color: '#6b7280' }}>
+                                    Cargando reportes...
+                                </Text>
+                            </View>
+                        ) : (
+                            <>
+                            {/* Activity Average (all groups) */}
+                            <Card style={styles.reportCard}>
+                                <Card.Content>
+                                    <Text variant="titleLarge" style={{ marginBottom: 12 }}>
+                                        Promedio por Actividad (Todos los Grupos)
+                                    </Text>
+                                    {loadingReports ? (
+                                        <Text style={{ color: '#6b7280' }}>
+                                            Cargando actividades...
+                                        </Text>
+                                    ) : activities.length === 0 ? (
+                                        <Text style={{ color: '#6b7280' }}>
+                                            No hay actividades
+                                        </Text>
+                                    ) : (
+                                        <View style={{ gap: 8 }}>
+                                            {activities.map((activity) => {
+                                                const activityGrades = allGrades.filter(
+                                                    (g) => g.activityId === activity._id
+                                                )
+                                                const avg =
+                                                    activityGrades.length > 0
+                                                        ? activityGrades.reduce(
+                                                              (sum, g) => sum + g.finalGrade,
+                                                              0
+                                                          ) / activityGrades.length
+                                                        : 0
+                                                return (
+                                                    <View
+                                                        key={activity._id}
+                                                        style={styles.reportRow}
+                                                    >
+                                                        <Text variant="bodyMedium" style={{ flex: 1, marginRight: 8 }}>
+                                                            {activity.title}
+                                                        </Text>
+                                                        <Chip
+                                                            icon="star"
+                                                            iconColor="#000000"
+                                                            style={{
+                                                                backgroundColor: '#E0E7FF',
+                                                                minWidth: 70
+                                                            }}
+                                                            textStyle={{ fontSize: 14, fontWeight: '600', color: '#000000' }}
+                                                        >
+                                                            {avg > 0 ? avg.toFixed(2) : '0.00'}
+                                                        </Chip>
+                                                    </View>
+                                                )
+                                            })}
+                                        </View>
+                                    )}
+                                </Card.Content>
+                            </Card>
+
+                            {/* Group Average (across activities) */}
+                            <Card style={styles.reportCard}>
+                                <Card.Content>
+                                    <Text variant="titleLarge" style={{ marginBottom: 12 }}>
+                                        Promedio por Grupo (Todas las Actividades)
+                                    </Text>
+                                    {allGroups.length === 0 ? (
+                                        <Text style={{ color: '#6b7280' }}>
+                                            No hay grupos
+                                        </Text>
+                                    ) : (
+                                        <View style={{ gap: 8 }}>
+                                            {allGroups.map((group) => {
+                                                const groupGrades = allGrades.filter(
+                                                    (g) => g.groupId === group._id
+                                                )
+                                                const avg =
+                                                    groupGrades.length > 0
+                                                        ? groupGrades.reduce(
+                                                              (sum, g) => sum + g.finalGrade,
+                                                              0
+                                                          ) / groupGrades.length
+                                                        : 0
+                                                return (
+                                                    <View
+                                                        key={group._id}
+                                                        style={styles.reportRow}
+                                                    >
+                                                        <Text variant="bodyMedium" style={{ flex: 1, marginRight: 8 }}>
+                                                            {group.name}
+                                                        </Text>
+                                                        <Chip
+                                                            icon="account-group"
+                                                            iconColor="#000000"
+                                                            style={{
+                                                                backgroundColor: '#D1FAE5',
+                                                                minWidth: 70
+                                                            }}
+                                                            textStyle={{ fontSize: 14, fontWeight: '600', color: '#000000' }}
+                                                        >
+                                                            {avg > 0 ? avg.toFixed(2) : '0.00'}
+                                                        </Chip>
+                                                    </View>
+                                                )
+                                            })}
+                                        </View>
+                                    )}
+                                </Card.Content>
+                            </Card>
+
+                            {/* Student Average (across activities) */}
+                            <Card style={styles.reportCard}>
+                                <Card.Content>
+                                    <Text variant="titleLarge" style={{ marginBottom: 12 }}>
+                                        Promedio por Estudiante (Todas las Actividades)
+                                    </Text>
+                                    {participants.filter((p) => p.role === 'STUDENT').length ===
+                                    0 ? (
+                                        <Text style={{ color: '#6b7280' }}>
+                                            No hay estudiantes
+                                        </Text>
+                                    ) : (
+                                        <View style={{ gap: 8 }}>
+                                            {participants
+                                                .filter((p) => p.role === 'STUDENT')
+                                                .map((student) => {
+                                                    const studentGrades = allGrades.filter(
+                                                        (g) => g.studentId === student.id
+                                                    )
+                                                    const avg =
+                                                        studentGrades.length > 0
+                                                            ? studentGrades.reduce(
+                                                                  (sum, g) =>
+                                                                      sum + g.finalGrade,
+                                                                  0
+                                                              ) / studentGrades.length
+                                                            : 0
+                                                    return (
+                                                        <View
+                                                            key={student.id}
+                                                            style={styles.reportRow}
+                                                        >
+                                                            <Text
+                                                                variant="bodyMedium"
+                                                                style={{ flex: 1, marginRight: 8 }}
+                                                            >
+                                                                Usuario{' '}
+                                                                {student.id.slice(0, 8)}
+                                                            </Text>
+                                                            <Chip
+                                                                icon="account"
+                                                                iconColor="#000000"
+                                                                style={{
+                                                                    backgroundColor:
+                                                                        '#FEF3C7',
+                                                                    minWidth: 70
+                                                                }}
+                                                                textStyle={{ fontSize: 14, fontWeight: '600', color: '#000000' }}
+                                                            >
+                                                                {avg > 0 ? avg.toFixed(2) : '0.00'}
+                                                            </Chip>
+                                                        </View>
+                                                    )
+                                                })}
+                                        </View>
+                                    )}
+                                </Card.Content>
+                            </Card>
+
+                            {/* Detailed Results per Group > Student > Criteria Score */}
+                            <Card style={styles.reportCard}>
+                                <Card.Content>
+                                    <Text variant="titleLarge" style={{ marginBottom: 12 }}>
+                                        Resultados Detallados
+                                    </Text>
+                                    {allGroups.length === 0 ? (
+                                        <Text style={{ color: '#6b7280' }}>
+                                            No hay grupos
+                                        </Text>
+                                    ) : (
+                                        <View style={{ gap: 16 }}>
+                                            {allGroups.map((group) => {
+                                                const groupGrades = allGrades.filter(
+                                                    (g) => g.groupId === group._id
+                                                )
+                                                const groupStudents = Array.from(
+                                                    new Set(
+                                                        groupGrades.map((g) => g.studentId)
+                                                    )
+                                                )
+                                                if (groupStudents.length === 0) return null
+                                                return (
+                                                    <View key={group._id}>
+                                                        <Text
+                                                            variant="titleMedium"
+                                                            style={{
+                                                                marginBottom: 8,
+                                                                color: '#4B5563'
+                                                            }}
+                                                        >
+                                                            {group.name}
+                                                        </Text>
+                                                        {groupStudents.map((studentId) => {
+                                                            const studentGrades =
+                                                                groupGrades.filter(
+                                                                    (g) =>
+                                                                        g.studentId ===
+                                                                        studentId
+                                                                )
+                                                            if (studentGrades.length === 0)
+                                                                return null
+                                                            return (
+                                                                <Card
+                                                                    key={studentId}
+                                                                    style={{
+                                                                        marginBottom: 8,
+                                                                        backgroundColor:
+                                                                            '#F9FAFB'
+                                                                    }}
+                                                                >
+                                                                    <Card.Content>
+                                                                        <Text
+                                                                            variant="bodyLarge"
+                                                                            style={{
+                                                                                marginBottom: 8,
+                                                                                fontWeight:
+                                                                                    '600'
+                                                                            }}
+                                                                        >
+                                                                            Usuario{' '}
+                                                                            {studentId.slice(
+                                                                                0,
+                                                                                8
+                                                                            )}
+                                                                        </Text>
+                                                                        {studentGrades.map(
+                                                                            (grade) => {
+                                                                                const activity =
+                                                                                    activities.find(
+                                                                                        (a) =>
+                                                                                            a._id ===
+                                                                                            grade.activityId
+                                                                                    )
+                                                                                const criterias =
+                                                                                    grade.criterias ||
+                                                                                    {}
+                                                                                return (
+                                                                                    <View
+                                                                                        key={
+                                                                                            grade._id
+                                                                                        }
+                                                                                        style={{
+                                                                                            marginBottom: 8,
+                                                                                            paddingLeft: 8,
+                                                                                            borderLeftWidth: 3,
+                                                                                            borderLeftColor:
+                                                                                                '#6750A4'
+                                                                                        }}
+                                                                                    >
+                                                                                        <Text
+                                                                                            variant="bodyMedium"
+                                                                                            style={{
+                                                                                                marginBottom: 4,
+                                                                                                fontWeight:
+                                                                                                    '500'
+                                                                                            }}
+                                                                                        >
+                                                                                            {
+                                                                                                activity?.title ||
+                                                                                                'Actividad'
+                                                                                            }
+                                                                                        </Text>
+                                                                                        <View
+                                                                                            style={{
+                                                                                                flexDirection:
+                                                                                                    'row',
+                                                                                                flexWrap:
+                                                                                                    'wrap',
+                                                                                                gap: 4
+                                                                                            }}
+                                                                                        >
+                                                                                            {Object.entries(
+                                                                                                criterias
+                                                                                            ).map(
+                                                                                                ([
+                                                                                                    key,
+                                                                                                    value
+                                                                                                ]) => (
+                                                                                                    <Chip
+                                                                                                        key={key}
+                                                                                                        compact
+                                                                                                        style={{
+                                                                                                            backgroundColor:
+                                                                                                                '#E0E7FF',
+                                                                                                            marginRight: 4,
+                                                                                                            marginBottom: 4
+                                                                                                        }}
+                                                                                                        textStyle={{ fontSize: 12, fontWeight: '500' }}
+                                                                                                    >
+                                                                                                        {key.charAt(0).toUpperCase() + key.slice(1)}: {value}
+                                                                                                    </Chip>
+                                                                                                )
+                                                                                            )}
+                                                                                            <Chip
+                                                                                                icon="star"
+                                                                                                compact
+                                                                                                style={{
+                                                                                                    backgroundColor:
+                                                                                                        '#FEF3C7',
+                                                                                                    marginBottom: 4
+                                                                                                }}
+                                                                                                textStyle={{ fontSize: 12, fontWeight: '600' }}
+                                                                                            >
+                                                                                                Final: {grade.finalGrade.toFixed(2)}
+                                                                                            </Chip>
+                                                                                        </View>
+                                                                                    </View>
+                                                                                )
+                                                                            }
+                                                                        )}
+                                                                    </Card.Content>
+                                                                </Card>
+                                                            )
+                                                        })}
+                                                    </View>
+                                                )
+                                            })}
+                                        </View>
+                                    )}
+                                </Card.Content>
+                            </Card>
+                        </>
+                        )}
+                    </ScrollView>
+                </View>
+            )}
+
             {activeTab !== 'info' &&
                 activeTab !== 'participants' &&
-                activeTab !== 'activities' && (
+                activeTab !== 'activities' &&
+                activeTab !== 'reports' && (
                     <View style={styles.placeholder}>
                         <Text>Sección en construcción</Text>
                     </View>
@@ -883,5 +1314,24 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         padding: 40
     },
-    fab: { position: 'absolute', right: 20, bottom: 20, elevation: 6 }
+    fab: { position: 'absolute', right: 20, bottom: 20, elevation: 6 },
+    reportsContent: {
+        padding: 20,
+        gap: 16,
+        paddingBottom: 400
+    },
+    reportCard: {
+        borderRadius: 16,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8
+    },
+    reportRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 4
+    }
 })
