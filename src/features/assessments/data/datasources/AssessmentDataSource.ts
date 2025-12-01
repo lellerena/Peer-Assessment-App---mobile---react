@@ -1,5 +1,5 @@
 import { Assessment, NewAssessment, UpdateAssessment } from "../../domain/entities/Assessment";
-import { PeerEvaluation, NewPeerEvaluation } from "../../domain/entities/PeerEvaluation";
+import { NewPeerEvaluation, PeerEvaluation, UpdatePeerEvaluation } from "../../domain/entities/PeerEvaluation";
 
 export interface AssessmentDataSource {
   getAssessmentsByActivity(activityId: string): Promise<Assessment[]>;

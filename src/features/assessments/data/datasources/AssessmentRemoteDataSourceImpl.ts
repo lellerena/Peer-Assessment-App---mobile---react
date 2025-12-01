@@ -2,7 +2,7 @@ import { ILocalPreferences } from "@/src/core/iLocalPreferences";
 import { LocalPreferencesAsyncStorage } from "@/src/core/LocalPreferencesAsyncStorage";
 import { AuthRemoteDataSourceImpl } from "@/src/features/auth/data/datasources/AuthRemoteDataSourceImp";
 import { Assessment, NewAssessment, UpdateAssessment } from "../../domain/entities/Assessment";
-import { PeerEvaluation, NewPeerEvaluation, UpdatePeerEvaluation } from "../../domain/entities/PeerEvaluation";
+import { NewPeerEvaluation, PeerEvaluation, UpdatePeerEvaluation } from "../../domain/entities/PeerEvaluation";
 import { AssessmentDataSource } from "./AssessmentDataSource";
 
 export class AssessmentRemoteDataSourceImpl implements AssessmentDataSource {
@@ -90,20 +90,32 @@ export class AssessmentRemoteDataSourceImpl implements AssessmentDataSource {
 
   async createAssessment(assessment: NewAssessment): Promise<Assessment> {
     const url = `${this.baseUrl}/insert`;
-    // Preparar el assessment para Roble - mantener activeCriteria como array simple
-    const robleAssessment = {
+    // Preparar el assessment para Roble - solo incluir campos definidos y no incluir _id
+    const robleAssessment: any = {
       name: assessment.name,
       activityId: assessment.activityId,
       courseId: assessment.courseId,
       categoryId: assessment.categoryId,
-      groupId: assessment.groupId,
       duration: assessment.duration,
       durationUnit: assessment.durationUnit,
       visibility: assessment.visibility,
       status: 'draft', // siempre se crea como borrador
-      activeCriteria: assessment.activeCriteria || [],
-      description: assessment.description
+      activeCriteria: assessment.activeCriteria || []
     };
+    
+    // Solo incluir groupId si está definido
+    if (assessment.groupId) {
+      robleAssessment.groupId = assessment.groupId;
+    }
+    
+    // Solo incluir description si está definido
+    if (assessment.description) {
+      robleAssessment.description = assessment.description;
+    }
+    
+    // Asegurarse de que no se envíe _id
+    delete (robleAssessment as any)._id;
+    
     const body = JSON.stringify({ tableName: this.assessmentsTable, records: [robleAssessment] });
     const r = await this.authorizedFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
     if (!r.ok) {
@@ -112,6 +124,20 @@ export class AssessmentRemoteDataSourceImpl implements AssessmentDataSource {
       throw new Error(`Error creating assessment: ${r.status} - ${errorText}`);
     }
     const data = await r.json();
+    
+    // Verificar si hay errores en la respuesta de Roble (cuando la tabla no existe o columnas inválidas)
+    if (data.skipped && data.skipped.length > 0) {
+      const errorReason = data.skipped[0].reason || 'Unknown error';
+      console.error('Assessment creation skipped by Roble:', data);
+      
+      // Si el error menciona columnas inválidas, probablemente la tabla no existe
+      if (errorReason.includes('Columnas inválidas') || errorReason.includes('does not exist')) {
+        throw new Error('La tabla "assessments" no existe en la base de datos. Por favor, créala primero en Roble con las columnas: name, activityId, courseId, categoryId, duration, durationUnit, visibility, status, activeCriteria, description, groupId (opcional), startDate (opcional), endDate (opcional), activatedAt (opcional), completedAt (opcional)');
+      }
+      
+      throw new Error(`Error al crear evaluación: ${errorReason}`);
+    }
+    
     const inserted = data.inserted?.[0] as any;
     
     // Verificar que inserted existe
@@ -243,7 +269,7 @@ export class AssessmentRemoteDataSourceImpl implements AssessmentDataSource {
     const { _id, ...updates } = evaluation as any;
     // Recalcular promedio si se actualizan criterios
     if (updates.criterias) {
-      const criteriaValues = Object.values(updates.criterias);
+      const criteriaValues = Object.values(updates.criterias) as number[];
       updates.averageScore = criteriaValues.length > 0
         ? Number((criteriaValues.reduce((sum: number, val: number) => sum + val, 0) / criteriaValues.length).toFixed(2))
         : 0;
