@@ -24,6 +24,7 @@ import { UpdateAssessmentUseCase } from '@/src/features/assessments/domain/useca
 import { DeleteAssessmentUseCase } from '@/src/features/assessments/domain/usecases/DeleteAssessmentUseCase'
 import { ActivateAssessmentUseCase } from '@/src/features/assessments/domain/usecases/ActivateAssessmentUseCase'
 import { CompleteAssessmentUseCase } from '@/src/features/assessments/domain/usecases/CompleteAssessmentUseCase'
+import { GetPeerEvaluationsByAssessmentUseCase } from '@/src/features/assessments/domain/usecases/GetPeerEvaluationsByAssessmentUseCase'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native'
@@ -115,6 +116,9 @@ export default function CourseDetailScreen() {
     )
     const completeAssessmentUC = di.resolve<CompleteAssessmentUseCase>(
         TOKENS.CompleteAssessmentUC
+    )
+    const getPeerEvaluationsByAssessmentUC = di.resolve<GetPeerEvaluationsByAssessmentUseCase>(
+        TOKENS.GetPeerEvaluationsByAssessmentUC
     )
 
     const [categories, setCategories] = useState<Category[]>([])
@@ -425,9 +429,21 @@ export default function CourseDetailScreen() {
         if (!dateStr) return ''
         try {
             const d = new Date(dateStr)
+            // No mostrar fechas placeholder (2099-12-31) para evaluaciones en draft
+            if (d.getFullYear() === 2099) return ''
             return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
         } catch {
             return dateStr
+        }
+    }
+    
+    const isPlaceholderDate = (dateStr?: string) => {
+        if (!dateStr) return false
+        try {
+            const d = new Date(dateStr)
+            return d.getFullYear() === 2099
+        } catch {
+            return false
         }
     }
 
@@ -1660,12 +1676,12 @@ export default function CourseDetailScreen() {
                                                 <Chip compact>
                                                     Criterios: {item.activeCriteria?.length || 0}
                                                 </Chip>
-                                                {item.startDate && (
+                                                {item.startDate && !isPlaceholderDate(item.startDate) && (
                                                     <Chip compact icon="calendar-clock">
                                                         Inicio: {formatDate(item.startDate)}
                                                     </Chip>
                                                 )}
-                                                {item.endDate && (
+                                                {item.endDate && !isPlaceholderDate(item.endDate) && (
                                                     <Chip compact icon="calendar-clock">
                                                         Fin: {formatDate(item.endDate)}
                                                     </Chip>
@@ -1702,6 +1718,21 @@ export default function CourseDetailScreen() {
                                                             }
                                                         >
                                                             Finalizar
+                                                        </Button>
+                                                    )}
+                                                    {item.status === 'completed' && (
+                                                        <Button
+                                                            mode="contained"
+                                                            icon="chart-bar"
+                                                            buttonColor="#3b82f6"
+                                                            onPress={() => {
+                                                                navigation.navigate('AssessmentResults', {
+                                                                    assessment: item,
+                                                                    course: course
+                                                                })
+                                                            }}
+                                                        >
+                                                            Ver resultados
                                                         </Button>
                                                     )}
                                                 </View>

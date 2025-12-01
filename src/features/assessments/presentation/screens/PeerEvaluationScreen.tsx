@@ -61,13 +61,26 @@ const scoreOptions = [2.0, 3.0, 4.0, 5.0] as const
 export default function PeerEvaluationScreen() {
     const route = useRoute<any>()
     const navigation = useNavigation<any>()
-    const assessment: Assessment = route.params?.assessment
-    const group: Group = route.params?.group
+    const assessment: Assessment | undefined = route.params?.assessment
+    const group: Group | undefined = route.params?.group
     const di = useDI()
     const theme = useTheme()
     const { user } = useAuth()
 
     const studentId = (user as any)?.id || (user as any)?._id
+    
+    // Validar que tenemos los datos necesarios
+    useEffect(() => {
+        if (!assessment || !group) {
+            console.error('Missing required params:', { assessment, group })
+            Alert.alert('Error', 'No se recibió la información necesaria para la evaluación')
+            navigation.goBack()
+        } else if (!group._id) {
+            console.error('Group missing _id:', group)
+            Alert.alert('Error', 'El grupo no tiene un identificador válido')
+            navigation.goBack()
+        }
+    }, [assessment, group])
     const getGroupsByCategoryUC = di.resolve<GetGroupsByCategoryUseCase_v2>(
         TOKENS.GetGroupsByCategoryUC_v2
     )
@@ -90,18 +103,7 @@ export default function PeerEvaluationScreen() {
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
 
-    useEffect(() => {
-        if (!group?.studentIds || !studentId) return
-        
-        // Filtrar miembros del grupo excluyendo al estudiante actual (no auto-evaluación)
-        const members = group.studentIds.filter(id => id !== studentId)
-        setGroupMembers(members)
-        
-        // Cargar evaluaciones existentes
-        loadExistingEvaluations(members)
-    }, [group, studentId])
-
-    const loadExistingEvaluations = async (members: string[]) => {
+    const loadExistingEvaluations = async () => {
         if (!assessment?._id || !studentId) return
         
         setLoading(true)
@@ -125,6 +127,20 @@ export default function PeerEvaluationScreen() {
             setLoading(false)
         }
     }
+
+    useEffect(() => {
+        if (!group || !group.studentIds || !studentId || !assessment?._id) {
+            console.warn('Missing data for loading evaluations:', { group, studentId, assessment })
+            return
+        }
+        
+        // Filtrar miembros del grupo excluyendo al estudiante actual (no auto-evaluación)
+        const members = group.studentIds.filter(id => id !== studentId)
+        setGroupMembers(members)
+        
+        // Cargar evaluaciones existentes
+        loadExistingEvaluations()
+    }, [group, studentId, assessment?._id])
 
     const setScore = (evaluatedId: string, criterion: AssessmentCriteria, score: number) => {
         setEvaluations(prev => ({
@@ -154,10 +170,29 @@ export default function PeerEvaluationScreen() {
     }
 
     const saveEvaluation = async (evaluatedId: string) => {
-        if (!assessment?._id || !studentId || !group?._id) return
+        // Validaciones más estrictas
+        if (!assessment || !assessment._id) {
+            Alert.alert('Error', 'No se encontró la información de la evaluación')
+            return
+        }
+        
+        if (!studentId) {
+            Alert.alert('Error', 'No se pudo identificar al estudiante')
+            return
+        }
+        
+        if (!group || !group._id) {
+            Alert.alert('Error', 'No se encontró la información del grupo')
+            return
+        }
+        
+        if (!assessment.activityId || !assessment.courseId) {
+            Alert.alert('Error', 'La evaluación no tiene toda la información necesaria')
+            return
+        }
         
         const evalScores = evaluations[evaluatedId]
-        if (!isEvaluationComplete(evaluatedId)) {
+        if (!evalScores || !isEvaluationComplete(evaluatedId)) {
             Alert.alert('Evaluación incompleta', 'Por favor califica todos los criterios activos')
             return
         }
@@ -182,7 +217,8 @@ export default function PeerEvaluationScreen() {
                 comment: comments[evaluatedId]?.trim() || undefined
             }
 
-            if (existing?._id) {
+            // Verificar que existing existe y tiene _id antes de actualizar
+            if (existing && existing._id) {
                 await updatePeerEvaluationUC.execute({
                     _id: existing._id,
                     ...evaluationData
@@ -191,8 +227,14 @@ export default function PeerEvaluationScreen() {
                 await createPeerEvaluationUC.execute(evaluationData)
             }
 
+            // Recargar evaluaciones después de guardar para mantener el estado actualizado
+            await loadExistingEvaluations()
             Alert.alert('Éxito', 'Evaluación guardada correctamente')
         } catch (error) {
+            console.error('Error saving evaluation:', error)
+            console.error('Assessment:', assessment)
+            console.error('Group:', group)
+            console.error('StudentId:', studentId)
             Alert.alert('Error', error instanceof Error ? error.message : 'Error al guardar la evaluación')
         } finally {
             setSaving(false)
