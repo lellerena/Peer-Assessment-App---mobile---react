@@ -1458,7 +1458,7 @@ export default function CourseDetailScreen() {
                                                                     style={{
                                                                         marginBottom: 8,
                                                                         backgroundColor:
-                                                                            '#F9FAFB'
+                                                                            '#1E1E1E'
                                                                     }}
                                                                 >
                                                                     <Card.Content>
@@ -1467,7 +1467,8 @@ export default function CourseDetailScreen() {
                                                                             style={{
                                                                                 marginBottom: 8,
                                                                                 fontWeight:
-                                                                                    '600'
+                                                                                    '600',
+                                                                                color: '#FFFFFF'
                                                                             }}
                                                                         >
                                                                             Usuario{' '}
@@ -1505,7 +1506,8 @@ export default function CourseDetailScreen() {
                                                                                             style={{
                                                                                                 marginBottom: 4,
                                                                                                 fontWeight:
-                                                                                                    '500'
+                                                                                                    '500',
+                                                                                                color: '#E5E7EB'
                                                                                             }}
                                                                                         >
                                                                                             {
