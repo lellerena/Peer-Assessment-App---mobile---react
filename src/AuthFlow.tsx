@@ -15,6 +15,7 @@ import ActivitySubmissionsScreen from "./features/submissions/presentation/scree
 import AddProductScreen from "./features/products/presentation/screens/AddProductScreen";
 import UpdateProductScreen from "./features/products/presentation/screens/UpdateProductScreen";
 import PeerEvaluationScreen from "./features/assessments/presentation/screens/PeerEvaluationScreen";
+import AssessmentResultsScreen from "./features/assessments/presentation/screens/AssessmentResultsScreen";
 
 
 const Stack = createStackNavigator();
@@ -112,6 +113,14 @@ export default function AuthFlow() {
             options={({ route }) => ({
               headerShown: true,
               title: route.params?.assessment ? `Evaluar: ${route.params.assessment.name}` : "Evaluación entre pares"
+            })}
+          />
+          <Stack.Screen
+            name="AssessmentResults"
+            component={AssessmentResultsScreen}
+            options={({ route }) => ({
+              headerShown: true,
+              title: route.params?.assessment ? `Resultados: ${route.params.assessment.name}` : "Resultados de evaluación"
             })}
           />
         </>
