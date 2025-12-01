@@ -55,4 +55,12 @@ export const TOKENS = {
   CreateSubmissionUC: Symbol("CreateSubmissionUC"),
   UpdateSubmissionUC: Symbol("UpdateSubmissionUC"),
   GetSubmissionByActivityAndStudentUC: Symbol("GetSubmissionByActivityAndStudentUC"),
+  GetSubmissionsByActivityUC: Symbol("GetSubmissionsByActivityUC"),
+  // Grade tokens
+  GradeRemoteDS: Symbol("GradeRemoteDS"),
+  GradeRepo: Symbol("GradeRepo"),
+  GetGradeByActivityAndStudentUC: Symbol("GetGradeByActivityAndStudentUC"),
+  GetGradesByCourseUC: Symbol("GetGradesByCourseUC"),
+  GetGradesByActivityUC: Symbol("GetGradesByActivityUC"),
+  SaveGradeUC: Symbol("SaveGradeUC"),
 } as const;
