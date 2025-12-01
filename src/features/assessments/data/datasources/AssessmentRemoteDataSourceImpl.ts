@@ -278,12 +278,31 @@ export class AssessmentRemoteDataSourceImpl implements AssessmentDataSource {
     const assessment = await this.getAssessmentById(assessmentId);
     if (!assessment) throw new Error("Assessment not found");
     
+    // Usar fecha local en lugar de UTC para evitar problemas de zona horaria
     const now = new Date();
-    const startDate = now.toISOString();
+    // Obtener componentes de fecha local
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    // Crear fecha ISO string con hora local (sin conversión UTC)
+    const startDate = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    
+    // Calcular endDate sumando la duración
     const durationMs = assessment.durationUnit === 'hours' 
       ? assessment.duration * 60 * 60 * 1000 
       : assessment.duration * 60 * 1000;
-    const endDate = new Date(now.getTime() + durationMs).toISOString();
+    const endDateObj = new Date(now.getTime() + durationMs);
+    const endYear = endDateObj.getFullYear();
+    const endMonth = String(endDateObj.getMonth() + 1).padStart(2, '0');
+    const endDay = String(endDateObj.getDate()).padStart(2, '0');
+    const endHours = String(endDateObj.getHours()).padStart(2, '0');
+    const endMinutes = String(endDateObj.getMinutes()).padStart(2, '0');
+    const endSeconds = String(endDateObj.getSeconds()).padStart(2, '0');
+    const endDate = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}:${endSeconds}`;
     
     const updates = {
       status: 'active' as const,

@@ -428,7 +428,20 @@ export default function CourseDetailScreen() {
     const formatDate = (dateStr?: string) => {
         if (!dateStr) return ''
         try {
-            const d = new Date(dateStr)
+            // Si la fecha viene sin zona horaria (formato YYYY-MM-DDTHH:mm:ss), 
+            // new Date() la interpreta como hora local, que es lo que queremos
+            let d: Date
+            if (dateStr.includes('T') && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+                // Formato sin zona horaria: YYYY-MM-DDTHH:mm:ss
+                const [datePart, timePart] = dateStr.split('T')
+                const [year, month, day] = datePart.split('-').map(Number)
+                const [hours, minutes, seconds] = timePart.split(':').map(Number)
+                d = new Date(year, month - 1, day, hours, minutes, seconds || 0)
+            } else {
+                // Formato ISO con zona horaria
+                d = new Date(dateStr)
+            }
+            
             // No mostrar fechas placeholder (2099-12-31) para evaluaciones en draft
             if (d.getFullYear() === 2099) return ''
             return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -1521,11 +1534,11 @@ export default function CourseDetailScreen() {
                                                                                                         compact
                                                                                                         style={{
                                                                                                             backgroundColor:
-                                                                                                                '#E0E7FF',
+                                                                                                                '#6366F1',
                                                                                                             marginRight: 4,
                                                                                                             marginBottom: 4
                                                                                                         }}
-                                                                                                        textStyle={{ fontSize: 12, fontWeight: '500' }}
+                                                                                                        textStyle={{ fontSize: 12, fontWeight: '500', color: '#FFFFFF' }}
                                                                                                     >
                                                                                                         {key.charAt(0).toUpperCase() + key.slice(1)}: {value}
                                                                                                     </Chip>
@@ -1681,7 +1694,7 @@ export default function CourseDetailScreen() {
                                                         Inicio: {formatDate(item.startDate)}
                                                     </Chip>
                                                 )}
-                                                {item.endDate && !isPlaceholderDate(item.endDate) && (
+                                                {item.endDate && !isPlaceholderDate(item.endDate) && item.status !== 'draft' && (
                                                     <Chip compact icon="calendar-clock">
                                                         Fin: {formatDate(item.endDate)}
                                                     </Chip>
@@ -1755,6 +1768,22 @@ export default function CourseDetailScreen() {
                                                     </Button>
                                                 ) : null
                                             })()}
+                                            {!isTeacher && item.status === 'completed' && item.visibility === 'public' && (
+                                                <Button
+                                                    mode="contained"
+                                                    icon="chart-bar"
+                                                    buttonColor="#3b82f6"
+                                                    onPress={() => {
+                                                        navigation.navigate('AssessmentResults', {
+                                                            assessment: item,
+                                                            course: course
+                                                        })
+                                                    }}
+                                                    style={{ marginTop: 12 }}
+                                                >
+                                                    Ver resultados
+                                                </Button>
+                                            )}
                                         </Card.Content>
                                     </Card>
                                 )
