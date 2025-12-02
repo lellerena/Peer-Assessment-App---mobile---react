@@ -293,12 +293,12 @@ export default function ActivitySubmissionsScreen() {
             )}
           </View>
           {gradeInfo?.feedback && (
-            <Card style={styles.feedbackCard}>
+            <Card style={[styles.feedbackCard, { backgroundColor: theme.colors.surfaceVariant }]}>
               <Card.Content>
-                <Text variant="labelLarge" style={{ marginBottom: 4 }}>
+                <Text variant="labelLarge" style={{ marginBottom: 4, color: theme.colors.onSurfaceVariant }}>
                   Retroalimentación
                 </Text>
-                <Text variant="bodyMedium" style={styles.feedbackText}>
+                <Text variant="bodyMedium" style={[styles.feedbackText, { color: theme.colors.onSurface }]}>
                   {gradeInfo.feedback}
                 </Text>
               </Card.Content>
@@ -558,12 +558,12 @@ const styles = StyleSheet.create({
   feedbackCard: {
     marginTop: 12,
     borderRadius: 12,
-    backgroundColor: '#EDE9FE',
+    // backgroundColor se establece dinámicamente usando theme.colors.surfaceVariant
     borderWidth: 1,
-    borderColor: '#C4B5FD',
+    borderColor: '#6366F1',
   },
   feedbackText: {
-    color: '#312E81',
+    // color se establece dinámicamente usando theme.colors.onSurface
     lineHeight: 20,
   },
   cardActions: {

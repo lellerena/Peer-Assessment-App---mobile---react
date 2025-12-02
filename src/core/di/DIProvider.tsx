@@ -67,6 +67,23 @@ import { GetGradeByActivityAndStudentUseCase } from "@/src/features/grades/domai
 import { GetGradesByCourseUseCase } from "@/src/features/grades/domain/usecases/GetGradesByCourseUseCase";
 import { GetGradesByActivityUseCase } from "@/src/features/grades/domain/usecases/GetGradesByActivityUseCase";
 import { SaveGradeUseCase } from "@/src/features/grades/domain/usecases/SaveGradeUseCase";
+// Assessments module
+import { AssessmentRemoteDataSourceImpl } from "@/src/features/assessments/data/datasources/AssessmentRemoteDataSourceImpl";
+import { AssessmentRepositoryImpl } from "@/src/features/assessments/data/repositories/AssessmentRepositoryImpl";
+import { GetAssessmentsByActivityUseCase } from "@/src/features/assessments/domain/usecases/GetAssessmentsByActivityUseCase";
+import { GetAssessmentsByCourseUseCase } from "@/src/features/assessments/domain/usecases/GetAssessmentsByCourseUseCase";
+import { GetAssessmentByIdUseCase } from "@/src/features/assessments/domain/usecases/GetAssessmentByIdUseCase";
+import { CreateAssessmentUseCase } from "@/src/features/assessments/domain/usecases/CreateAssessmentUseCase";
+import { UpdateAssessmentUseCase } from "@/src/features/assessments/domain/usecases/UpdateAssessmentUseCase";
+import { DeleteAssessmentUseCase } from "@/src/features/assessments/domain/usecases/DeleteAssessmentUseCase";
+import { ActivateAssessmentUseCase } from "@/src/features/assessments/domain/usecases/ActivateAssessmentUseCase";
+import { CompleteAssessmentUseCase } from "@/src/features/assessments/domain/usecases/CompleteAssessmentUseCase";
+import { CreatePeerEvaluationUseCase } from "@/src/features/assessments/domain/usecases/CreatePeerEvaluationUseCase";
+import { GetPeerEvaluationsByAssessmentUseCase } from "@/src/features/assessments/domain/usecases/GetPeerEvaluationsByAssessmentUseCase";
+import { GetPeerEvaluationsByEvaluatorUseCase } from "@/src/features/assessments/domain/usecases/GetPeerEvaluationsByEvaluatorUseCase";
+import { GetPeerEvaluationsByEvaluatedUseCase } from "@/src/features/assessments/domain/usecases/GetPeerEvaluationsByEvaluatedUseCase";
+import { GetPeerEvaluationByEvaluatorAndEvaluatedUseCase } from "@/src/features/assessments/domain/usecases/GetPeerEvaluationByEvaluatorAndEvaluatedUseCase";
+import { UpdatePeerEvaluationUseCase } from "@/src/features/assessments/domain/usecases/UpdatePeerEvaluationUseCase";
 
 const DIContext = createContext<Container | null>(null);
 
@@ -165,6 +182,26 @@ export function DIProvider({ children }: { children: React.ReactNode }) {
             .register(TOKENS.GetGradesByCourseUC, new GetGradesByCourseUseCase(gradeRepo))
             .register(TOKENS.GetGradesByActivityUC, new GetGradesByActivityUseCase(gradeRepo))
             .register(TOKENS.SaveGradeUC, new SaveGradeUseCase(gradeRepo));
+
+        // Assessments DI
+        const assessmentRemoteDS = new AssessmentRemoteDataSourceImpl(authDS);
+        const assessmentRepo = new AssessmentRepositoryImpl(assessmentRemoteDS);
+        c.register(TOKENS.AssessmentRemoteDS, assessmentRemoteDS)
+            .register(TOKENS.AssessmentRepo, assessmentRepo)
+            .register(TOKENS.GetAssessmentsByActivityUC, new GetAssessmentsByActivityUseCase(assessmentRepo))
+            .register(TOKENS.GetAssessmentsByCourseUC, new GetAssessmentsByCourseUseCase(assessmentRepo))
+            .register(TOKENS.GetAssessmentByIdUC, new GetAssessmentByIdUseCase(assessmentRepo))
+            .register(TOKENS.CreateAssessmentUC, new CreateAssessmentUseCase(assessmentRepo))
+            .register(TOKENS.UpdateAssessmentUC, new UpdateAssessmentUseCase(assessmentRepo))
+            .register(TOKENS.DeleteAssessmentUC, new DeleteAssessmentUseCase(assessmentRepo))
+            .register(TOKENS.ActivateAssessmentUC, new ActivateAssessmentUseCase(assessmentRepo))
+            .register(TOKENS.CompleteAssessmentUC, new CompleteAssessmentUseCase(assessmentRepo))
+            .register(TOKENS.CreatePeerEvaluationUC, new CreatePeerEvaluationUseCase(assessmentRepo))
+            .register(TOKENS.GetPeerEvaluationsByAssessmentUC, new GetPeerEvaluationsByAssessmentUseCase(assessmentRepo))
+            .register(TOKENS.GetPeerEvaluationsByEvaluatorUC, new GetPeerEvaluationsByEvaluatorUseCase(assessmentRepo))
+            .register(TOKENS.GetPeerEvaluationsByEvaluatedUC, new GetPeerEvaluationsByEvaluatedUseCase(assessmentRepo))
+            .register(TOKENS.GetPeerEvaluationByEvaluatorAndEvaluatedUC, new GetPeerEvaluationByEvaluatorAndEvaluatedUseCase(assessmentRepo))
+            .register(TOKENS.UpdatePeerEvaluationUC, new UpdatePeerEvaluationUseCase(assessmentRepo));
 
         return c;
     }, []);

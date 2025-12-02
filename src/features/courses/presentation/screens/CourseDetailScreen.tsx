@@ -17,9 +17,17 @@ import { GetGradesByCourseUseCase } from '@/src/features/grades/domain/usecases/
 import { GetGradesByActivityUseCase } from '@/src/features/grades/domain/usecases/GetGradesByActivityUseCase'
 import { Grade } from '@/src/features/grades/domain/entities/Grade'
 import { Group } from '@/src/features/groups/domain/entities/Group'
+import { Assessment, AssessmentCriteria, AssessmentVisibility } from '@/src/features/assessments/domain/entities/Assessment'
+import { GetAssessmentsByCourseUseCase } from '@/src/features/assessments/domain/usecases/GetAssessmentsByCourseUseCase'
+import { CreateAssessmentUseCase } from '@/src/features/assessments/domain/usecases/CreateAssessmentUseCase'
+import { UpdateAssessmentUseCase } from '@/src/features/assessments/domain/usecases/UpdateAssessmentUseCase'
+import { DeleteAssessmentUseCase } from '@/src/features/assessments/domain/usecases/DeleteAssessmentUseCase'
+import { ActivateAssessmentUseCase } from '@/src/features/assessments/domain/usecases/ActivateAssessmentUseCase'
+import { CompleteAssessmentUseCase } from '@/src/features/assessments/domain/usecases/CompleteAssessmentUseCase'
+import { GetPeerEvaluationsByAssessmentUseCase } from '@/src/features/assessments/domain/usecases/GetPeerEvaluationsByAssessmentUseCase'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlatList, ScrollView, StyleSheet, View } from 'react-native'
+import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native'
 import {
     Avatar,
     Button,
@@ -91,6 +99,27 @@ export default function CourseDetailScreen() {
     const getGradesByActivityUC = di.resolve<GetGradesByActivityUseCase>(
         TOKENS.GetGradesByActivityUC
     )
+    const getAssessmentsByCourseUC = di.resolve<GetAssessmentsByCourseUseCase>(
+        TOKENS.GetAssessmentsByCourseUC
+    )
+    const createAssessmentUC = di.resolve<CreateAssessmentUseCase>(
+        TOKENS.CreateAssessmentUC
+    )
+    const updateAssessmentUC = di.resolve<UpdateAssessmentUseCase>(
+        TOKENS.UpdateAssessmentUC
+    )
+    const deleteAssessmentUC = di.resolve<DeleteAssessmentUseCase>(
+        TOKENS.DeleteAssessmentUC
+    )
+    const activateAssessmentUC = di.resolve<ActivateAssessmentUseCase>(
+        TOKENS.ActivateAssessmentUC
+    )
+    const completeAssessmentUC = di.resolve<CompleteAssessmentUseCase>(
+        TOKENS.CompleteAssessmentUC
+    )
+    const getPeerEvaluationsByAssessmentUC = di.resolve<GetPeerEvaluationsByAssessmentUseCase>(
+        TOKENS.GetPeerEvaluationsByAssessmentUC
+    )
 
     const [categories, setCategories] = useState<Category[]>([])
     const [activities, setActivities] = useState<Activity[]>([])
@@ -116,6 +145,22 @@ export default function CourseDetailScreen() {
     const [allGroups, setAllGroups] = useState<Group[]>([])
     const [allGrades, setAllGrades] = useState<Grade[]>([])
     const [loadingReports, setLoadingReports] = useState(false)
+    const [groupsByCategory, setGroupsByCategory] = useState<Record<string, Group[]>>({})
+    // Assessments state
+    const [assessments, setAssessments] = useState<Assessment[]>([])
+    const [loadingAssessments, setLoadingAssessments] = useState(false)
+    const [showAssessmentDialog, setShowAssessmentDialog] = useState(false)
+    const [editingAssessment, setEditingAssessment] = useState<Assessment | null>(null)
+    const [assessmentName, setAssessmentName] = useState('')
+    const [assessmentActivityId, setAssessmentActivityId] = useState<string>('')
+    const [assessmentDuration, setAssessmentDuration] = useState('60')
+    const [assessmentDurationUnit, setAssessmentDurationUnit] = useState<'minutes' | 'hours'>('minutes')
+    const [assessmentVisibility, setAssessmentVisibility] = useState<AssessmentVisibility>('private')
+    const [selectedCriteria, setSelectedCriteria] = useState<AssessmentCriteria[]>([])
+    const [showCriteriaDialog, setShowCriteriaDialog] = useState(false)
+    const [assessmentProgress, setAssessmentProgress] = useState<
+        Record<string, { evaluators: number; total: number; evaluations: number }>
+    >({})
 
     const refreshCategories = async () => {
         if (!course?._id) return
@@ -144,9 +189,94 @@ export default function CourseDetailScreen() {
         }
     }
 
+    const loadGroupsForActivities = useCallback(async () => {
+        if (!categories.length) return
+        try {
+            const groupsMap: Record<string, Group[]> = {}
+            for (const category of categories) {
+                if (category._id) {
+                    const groups = await getGroupsByCategoryUC.execute(category._id)
+                    groupsMap[category._id] = groups
+                }
+            }
+            setGroupsByCategory(groupsMap)
+        } catch (error) {
+            console.error('Error loading groups for activities:', error)
+        }
+    }, [categories, getGroupsByCategoryUC])
+
+    const participants = useMemo(() => {
+        if (!course)
+            return [] as Array<{ id: string; role: 'TEACHER' | 'STUDENT' }>
+        const list: Array<{ id: string; role: 'TEACHER' | 'STUDENT' }> = []
+        if (course.teacherId)
+            list.push({ id: course.teacherId, role: 'TEACHER' })
+        ;(course.studentIds || []).forEach((sid) =>
+            list.push({ id: sid, role: 'STUDENT' })
+        )
+        return list
+    }, [course])
+
+    const studentCount = useMemo(
+        () => participants.filter((p) => p.role === 'STUDENT').length,
+        [participants]
+    )
+
+    const loadAssessmentProgress = useCallback(
+        async (list: Assessment[]) => {
+            if (!isTeacher) {
+                setAssessmentProgress({})
+                return
+            }
+            const total = Math.max(studentCount, 0)
+            if (list.length === 0 || total === 0) {
+                setAssessmentProgress({})
+                return
+            }
+            const entries: Record<string, { evaluators: number; total: number; evaluations: number }> = {}
+            await Promise.all(
+                list
+                    .filter((assessment) => assessment._id && assessment.status !== 'draft')
+                    .map(async (assessment) => {
+                        try {
+                            const evaluations = await getPeerEvaluationsByAssessmentUC.execute(assessment._id!)
+                            const evaluators = new Set(evaluations.map((ev) => ev.evaluatorId)).size
+                            entries[assessment._id!] = {
+                                evaluators,
+                                total,
+                                evaluations: evaluations.length
+                            }
+                        } catch (error) {
+                            console.error('Error loading progress for assessment:', assessment._id, error)
+                        }
+                    })
+            )
+            setAssessmentProgress(entries)
+        },
+        [getPeerEvaluationsByAssessmentUC, isTeacher, studentCount]
+    )
+
+    const refreshAssessments = async () => {
+        if (!course?._id) return
+        setLoadingAssessments(true)
+        try {
+            const data = await getAssessmentsByCourseUC.execute(course._id)
+            setAssessments(data)
+            await loadAssessmentProgress(data)
+        } catch (error) {
+            console.error('Error loading assessments:', error)
+        } finally {
+            setLoadingAssessments(false)
+        }
+    }
+
     useEffect(() => {
         if (activeTab === 'activities') {
             refreshActivities().catch(() => {})
+            loadGroupsForActivities().catch(() => {})
+        }
+        if (activeTab === 'assessments') {
+            refreshAssessments().catch(() => {})
         }
         if (activeTab === 'reports' && course?._id) {
             // Set loading immediately to prevent showing "No hay actividades" before data loads
@@ -156,7 +286,12 @@ export default function CourseDetailScreen() {
             loadReportsData().catch(() => {})
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, course?._id])
+    }, [activeTab, course?._id, categories, loadGroupsForActivities, getAssessmentsByCourseUC])
+
+    useEffect(() => {
+        if (!isTeacher || assessments.length === 0) return
+        loadAssessmentProgress(assessments).catch(() => {})
+    }, [assessments, isTeacher, loadAssessmentProgress])
 
     const loadReportsData = useCallback(async () => {
         if (!course?._id) {
@@ -193,21 +328,280 @@ export default function CourseDetailScreen() {
         }
     }, [course?._id, categories, getActivitiesByCourseUC, getGroupsByCategoryUC, getGradesByCourseUC])
 
-    const participants = useMemo(() => {
-        if (!course)
-            return [] as Array<{ id: string; role: 'TEACHER' | 'STUDENT' }>
-        const list: Array<{ id: string; role: 'TEACHER' | 'STUDENT' }> = []
-        if (course.teacherId)
-            list.push({ id: course.teacherId, role: 'TEACHER' })
-        ;(course.studentIds || []).forEach((sid) =>
-            list.push({ id: sid, role: 'STUDENT' })
-        )
-        return list
-    }, [course])
-
     const categoryNameById = (id?: string) => {
         const found = categories.find((c) => c._id === id)
         return found?.name || id || ''
+    }
+
+    const getStudentGroupForActivity = (activity: Activity): Group | null => {
+        if (!activity.categoryId) return null
+        const studentId = (user as any)?.id || (user as any)?._id
+        if (!studentId) return null
+        
+        const groups = groupsByCategory[activity.categoryId] || []
+        const studentGroup = groups.find((group) => 
+            group.studentIds?.includes(studentId)
+        )
+        return studentGroup || null
+    }
+
+    const openNewAssessment = () => {
+        setEditingAssessment(null)
+        setAssessmentName('')
+        setAssessmentActivityId(activities[0]?._id || '')
+        setAssessmentDuration('60')
+        setAssessmentDurationUnit('minutes')
+        setAssessmentVisibility('private')
+        setSelectedCriteria([])
+        setShowAssessmentDialog(true)
+    }
+
+    const openEditAssessment = (assessment: Assessment) => {
+        setEditingAssessment(assessment)
+        setAssessmentName(assessment.name)
+        setAssessmentActivityId(assessment.activityId)
+        setAssessmentDuration(String(assessment.duration))
+        setAssessmentDurationUnit(assessment.durationUnit)
+        setAssessmentVisibility(assessment.visibility)
+        setSelectedCriteria(assessment.activeCriteria || [])
+        setShowAssessmentDialog(true)
+    }
+
+    const saveAssessment = async () => {
+        if (!course?._id || !assessmentActivityId || !assessmentName.trim() || selectedCriteria.length === 0) {
+            Alert.alert('Error', 'Por favor completa todos los campos requeridos')
+            return
+        }
+
+        const activity = activities.find(a => a._id === assessmentActivityId)
+        if (!activity) {
+            Alert.alert('Error', 'Actividad no encontrada')
+            return
+        }
+
+        const durationNum = Number(assessmentDuration)
+        if (isNaN(durationNum) || durationNum <= 0) {
+            Alert.alert('Error', 'La duración debe ser un número mayor a 0')
+            return
+        }
+
+        try {
+            if (editingAssessment?._id) {
+                await updateAssessmentUC.execute({
+                    _id: editingAssessment._id,
+                    name: assessmentName.trim(),
+                    duration: durationNum,
+                    durationUnit: assessmentDurationUnit,
+                    visibility: assessmentVisibility,
+                    activeCriteria: selectedCriteria
+                })
+            } else {
+                await createAssessmentUC.execute({
+                    name: assessmentName.trim(),
+                    activityId: assessmentActivityId,
+                    courseId: course._id,
+                    categoryId: activity.categoryId,
+                    duration: durationNum,
+                    durationUnit: assessmentDurationUnit,
+                    visibility: assessmentVisibility,
+                    activeCriteria: selectedCriteria,
+                    description: `Evaluación de pares para ${activity.title}`
+                })
+            }
+            // Refrescar lista primero
+            await refreshAssessments()
+            // Cerrar diálogo y resetear formulario
+            setShowAssessmentDialog(false)
+            setAssessmentName('')
+            setAssessmentActivityId('')
+            setAssessmentDuration('60')
+            setAssessmentDurationUnit('minutes')
+            setAssessmentVisibility('private')
+            setSelectedCriteria([])
+            setEditingAssessment(null)
+            // Mostrar mensaje de éxito
+            Alert.alert('Éxito', editingAssessment ? 'Evaluación actualizada correctamente' : 'Evaluación creada correctamente')
+        } catch (error) {
+            console.error('Error saving assessment:', error)
+            const errorMessage = error instanceof Error ? error.message : 'Error al guardar la evaluación'
+            Alert.alert('Error', errorMessage)
+        }
+    }
+
+    const handleDeleteAssessment = (assessmentId?: string) => {
+        if (!assessmentId) return
+        Alert.alert(
+            'Confirmar eliminación',
+            '¿Estás seguro de eliminar esta evaluación?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: () => {
+                        (async () => {
+                            try {
+                                await deleteAssessmentUC.execute(assessmentId)
+                                await refreshAssessments()
+                            } catch (error) {
+                                Alert.alert('Error', error instanceof Error ? error.message : 'Error al eliminar la evaluación')
+                            }
+                        })()
+                    }
+                }
+            ]
+        )
+    }
+
+    const handleActivateAssessment = async (assessmentId: string) => {
+        try {
+            await activateAssessmentUC.execute(assessmentId)
+            await refreshAssessments()
+            Alert.alert('Éxito', 'Evaluación activada correctamente')
+        } catch (error) {
+            Alert.alert('Error', error instanceof Error ? error.message : 'Error al activar la evaluación')
+        }
+    }
+
+    const handleCompleteAssessment = async (assessmentId: string) => {
+        try {
+            // Verificar si todos los estudiantes han evaluado
+            const assessment = assessments.find(a => a._id === assessmentId)
+            if (assessment && assessment.status === 'active') {
+                const progress = assessmentProgress[assessmentId]
+                if (progress && progress.evaluators < progress.total) {
+                    const missing = progress.total - progress.evaluators
+                    Alert.alert(
+                        'Evaluaciones Pendientes',
+                        `Aún faltan ${missing} estudiante${missing > 1 ? 's' : ''} por evaluar (${progress.evaluators}/${progress.total} completadas).\n\n¿Deseas finalizar la evaluación de todas formas?`,
+                        [
+                            {
+                                text: 'Cancelar',
+                                style: 'cancel'
+                            },
+                            {
+                                text: 'Finalizar de todas formas',
+                                style: 'destructive',
+                                onPress: async () => {
+                                    try {
+                                        await completeAssessmentUC.execute(assessmentId)
+                                        await refreshAssessments()
+                                        Alert.alert('Éxito', 'Evaluación finalizada correctamente')
+                                    } catch (error) {
+                                        Alert.alert('Error', error instanceof Error ? error.message : 'Error al finalizar la evaluación')
+                                    }
+                                }
+                            }
+                        ]
+                    )
+                    return
+                }
+            }
+            
+            // Si todos han evaluado o no hay datos de progreso, proceder normalmente
+            await completeAssessmentUC.execute(assessmentId)
+            await refreshAssessments()
+            Alert.alert('Éxito', 'Evaluación finalizada correctamente')
+        } catch (error) {
+            Alert.alert('Error', error instanceof Error ? error.message : 'Error al finalizar la evaluación')
+        }
+    }
+
+    const formatDate = (dateStr?: string) => {
+        if (!dateStr) return ''
+        try {
+            // Si la fecha viene sin zona horaria (formato YYYY-MM-DDTHH:mm:ss), 
+            // new Date() la interpreta como hora local, que es lo que queremos
+            let d: Date
+            if (dateStr.includes('T') && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+                // Formato sin zona horaria: YYYY-MM-DDTHH:mm:ss
+                const [datePart, timePart] = dateStr.split('T')
+                const [year, month, day] = datePart.split('-').map(Number)
+                const [hours, minutes, seconds] = timePart.split(':').map(Number)
+                d = new Date(year, month - 1, day, hours, minutes, seconds || 0)
+            } else {
+                // Formato ISO con zona horaria
+                d = new Date(dateStr)
+            }
+            
+            // No mostrar fechas placeholder (2099-12-31) para evaluaciones en draft
+            if (d.getFullYear() === 2099) return ''
+            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        } catch {
+            return dateStr
+        }
+    }
+    
+    const isPlaceholderDate = (dateStr?: string) => {
+        if (!dateStr) return false
+        try {
+            const d = new Date(dateStr)
+            return d.getFullYear() === 2099
+        } catch {
+            return false
+        }
+    }
+
+    const isAssessmentExpired = (assessment: Assessment): boolean => {
+        if (!assessment.endDate || assessment.status === 'draft' || assessment.status === 'completed') {
+            return false
+        }
+        try {
+            let endDate: Date
+            if (assessment.endDate.includes('T') && !assessment.endDate.includes('Z') && !assessment.endDate.includes('+') && !assessment.endDate.includes('-', 10)) {
+                const [datePart, timePart] = assessment.endDate.split('T')
+                const [year, month, day] = datePart.split('-').map(Number)
+                const [hours, minutes, seconds = 0] = timePart.split(':').map(Number)
+                endDate = new Date(year, month - 1, day, hours, minutes, seconds)
+            } else {
+                endDate = new Date(assessment.endDate)
+            }
+            return new Date().getTime() > endDate.getTime()
+        } catch {
+            return false
+        }
+    }
+
+    const getStatusLabel = (assessment: Assessment) => {
+        // Si la evaluación está activa pero expiró, mostrar "Expirada" para todos
+        if (assessment.status === 'active' && isAssessmentExpired(assessment)) {
+            return 'Expirada'
+        }
+        switch (assessment.status) {
+            case 'draft': return 'Borrador'
+            case 'active': return 'Activa'
+            case 'completed': return 'Completada'
+            default: return assessment.status
+        }
+    }
+
+    const getStatusColor = (assessment: Assessment) => {
+        // Si la evaluación está activa pero expiró, mostrar color naranja para todos
+        if (assessment.status === 'active' && isAssessmentExpired(assessment)) {
+            return '#f59e0b' // Color naranja para expirada
+        }
+        switch (assessment.status) {
+            case 'draft': return '#6b7280'
+            case 'active': return '#10b981'
+            case 'completed': return '#3b82f6'
+            default: return '#6b7280'
+        }
+    }
+
+    const allCriteria: AssessmentCriteria[] = ['punctuality', 'contributions', 'commitment', 'attitude']
+    const criteriaLabels: Record<AssessmentCriteria, string> = {
+        punctuality: 'Puntualidad',
+        contributions: 'Contribuciones',
+        commitment: 'Compromiso',
+        attitude: 'Actitud'
+    }
+
+    const toggleCriterion = (criterion: AssessmentCriteria) => {
+        setSelectedCriteria(prev => 
+            prev.includes(criterion)
+                ? prev.filter(c => c !== criterion)
+                : [...prev, criterion]
+        )
     }
 
     const openNewActivity = () => {
@@ -814,6 +1208,36 @@ export default function CourseDetailScreen() {
                                                 </Button>
                                             </View>
                                         )}
+                                        {!isTeacher && (() => {
+                                            const studentGroup = getStudentGroupForActivity(item)
+                                            if (studentGroup) {
+                                                return (
+                                                    <View
+                                                        style={{
+                                                            marginTop: 8,
+                                                            alignItems: 'flex-end'
+                                                        }}
+                                                    >
+                                                        <Button
+                                                            icon="upload"
+                                                            mode="contained"
+                                                            onPress={() =>
+                                                                navigation.navigate(
+                                                                    'ActivitySubmission',
+                                                                    {
+                                                                        activity: item,
+                                                                        group: studentGroup
+                                                                    }
+                                                                )
+                                                            }
+                                                        >
+                                                            Entregar
+                                                        </Button>
+                                                    </View>
+                                                )
+                                            }
+                                            return null
+                                        })()}
                                     </Card.Content>
                                 </Card>
                             )}
@@ -1144,7 +1568,7 @@ export default function CourseDetailScreen() {
                                                                     style={{
                                                                         marginBottom: 8,
                                                                         backgroundColor:
-                                                                            '#F9FAFB'
+                                                                            '#1E1E1E'
                                                                     }}
                                                                 >
                                                                     <Card.Content>
@@ -1153,7 +1577,8 @@ export default function CourseDetailScreen() {
                                                                             style={{
                                                                                 marginBottom: 8,
                                                                                 fontWeight:
-                                                                                    '600'
+                                                                                    '600',
+                                                                                color: '#FFFFFF'
                                                                             }}
                                                                         >
                                                                             Usuario{' '}
@@ -1191,7 +1616,8 @@ export default function CourseDetailScreen() {
                                                                                             style={{
                                                                                                 marginBottom: 4,
                                                                                                 fontWeight:
-                                                                                                    '500'
+                                                                                                    '500',
+                                                                                                color: '#E5E7EB'
                                                                                             }}
                                                                                         >
                                                                                             {
@@ -1220,11 +1646,11 @@ export default function CourseDetailScreen() {
                                                                                                         compact
                                                                                                         style={{
                                                                                                             backgroundColor:
-                                                                                                                '#E0E7FF',
+                                                                                                                '#6366F1',
                                                                                                             marginRight: 4,
                                                                                                             marginBottom: 4
                                                                                                         }}
-                                                                                                        textStyle={{ fontSize: 12, fontWeight: '500' }}
+                                                                                                        textStyle={{ fontSize: 12, fontWeight: '500', color: '#FFFFFF' }}
                                                                                                     >
                                                                                                         {key.charAt(0).toUpperCase() + key.slice(1)}: {value}
                                                                                                     </Chip>
@@ -1264,9 +1690,474 @@ export default function CourseDetailScreen() {
                 </View>
             )}
 
+            {activeTab === 'assessments' && (
+                <View style={styles.listContainer}>
+                    <View
+                        style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 8
+                        }}
+                    >
+                        <Text variant="titleLarge">
+                            Evaluaciones ({assessments.length})
+                        </Text>
+                        <IconButton
+                            icon="refresh"
+                            onPress={refreshAssessments}
+                            disabled={loadingAssessments}
+                        />
+                    </View>
+                    {loadingAssessments ? (
+                        <Text style={{ color: '#6b7280' }}>
+                            Cargando evaluaciones...
+                        </Text>
+                    ) : assessments.length === 0 ? (
+                        <Text style={{ color: '#6b7280' }}>
+                            No hay evaluaciones creadas
+                        </Text>
+                    ) : (
+                        <FlatList
+                            data={assessments}
+                            keyExtractor={(a) => a._id || a.name}
+                            renderItem={({ item }) => {
+                                const activity = activities.find(a => a._id === item.activityId)
+                                const progress = item._id ? assessmentProgress[item._id] : undefined
+                                return (
+                                    <Card style={styles.participantCard}>
+                                        <Card.Content>
+                                            <View
+                                                style={{
+                                                    flexDirection: 'row',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center'
+                                                }}
+                                            >
+                                                <View style={{ flex: 1 }}>
+                                                    <Text variant="titleMedium">
+                                                        {item.name}
+                                                    </Text>
+                                                    {activity && (
+                                                        <Text
+                                                            variant="bodySmall"
+                                                            style={{
+                                                                marginTop: 4,
+                                                                color: '#6b7280'
+                                                            }}
+                                                        >
+                                                            Categoría: {categoryNameById(activity.categoryId)}
+                                                        </Text>
+                                                    )}
+                                                    {item.description && (
+                                                        <Text
+                                                            variant="bodySmall"
+                                                            style={{
+                                                                marginTop: 4,
+                                                                color: '#6b7280'
+                                                            }}
+                                                        >
+                                                            {item.description}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                                {isTeacher && (
+                                                    <View
+                                                        style={{
+                                                            flexDirection: 'row'
+                                                        }}
+                                                    >
+                                                        <IconButton
+                                                            icon="pencil"
+                                                            onPress={() =>
+                                                                openEditAssessment(item)
+                                                            }
+                                                        />
+                                                        <IconButton
+                                                            icon="delete"
+                                                            iconColor="#b91c1c"
+                                                            onPress={() =>
+                                                                handleDeleteAssessment(item._id)
+                                                            }
+                                                        />
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <View
+                                                style={{
+                                                    flexDirection: 'row',
+                                                    flexWrap: 'wrap',
+                                                    gap: 8,
+                                                    marginTop: 8
+                                                }}
+                                            >
+                                                <Chip
+                                                    style={{
+                                                        backgroundColor: getStatusColor(item)
+                                                    }}
+                                                    textStyle={{ color: '#fff' }}
+                                                >
+                                                    {getStatusLabel(item)}
+                                                </Chip>
+                                                <Chip compact>
+                                                    Criterios: {item.activeCriteria?.length || 0}
+                                                </Chip>
+                                                {item.startDate && !isPlaceholderDate(item.startDate) && (
+                                                    <Chip compact icon="calendar-clock">
+                                                        Inicio: {formatDate(item.startDate)}
+                                                    </Chip>
+                                                )}
+                                                {item.endDate && !isPlaceholderDate(item.endDate) && item.status !== 'draft' && (
+                                                    <Chip compact icon="calendar-clock">
+                                                        Fin: {formatDate(item.endDate)}
+                                                    </Chip>
+                                                )}
+                                            {isTeacher && item.status !== 'draft' && (
+                                                <View
+                                                    style={{
+                                                        flexDirection: 'row',
+                                                        flexWrap: 'wrap',
+                                                        gap: 8,
+                                                        marginTop: 8
+                                                    }}
+                                                >
+                                                    <Chip compact icon="progress-clock">
+                                                        {progress
+                                                            ? `Avance: ${progress.evaluators}/${progress.total}`
+                                                            : studentCount > 0
+                                                                ? `Avance: 0/${studentCount}`
+                                                                : 'Avance: sin estudiantes'}
+                                                    </Chip>
+                                                    <Chip compact icon="clipboard-check-outline">
+                                                        {progress
+                                                            ? `Evaluaciones: ${progress.evaluations}`
+                                                            : 'Evaluaciones: 0'}
+                                                    </Chip>
+                                                </View>
+                                            )}
+
+                                            </View>
+                                            {isTeacher && (
+                                                <View
+                                                    style={{
+                                                        marginTop: 12,
+                                                        flexDirection: 'row',
+                                                        gap: 8,
+                                                        alignItems: 'center'
+                                                    }}
+                                                >
+                                                    {item.status === 'draft' && (
+                                                        <Button
+                                                            mode="contained"
+                                                            icon="play"
+                                                            buttonColor="#10b981"
+                                                            onPress={() =>
+                                                                handleActivateAssessment(item._id!)
+                                                            }
+                                                        >
+                                                            Activar
+                                                        </Button>
+                                                    )}
+                                                    {item.status === 'active' && (
+                                                        <Button
+                                                            mode="contained"
+                                                            icon="stop"
+                                                            buttonColor="#ef4444"
+                                                            onPress={() =>
+                                                                handleCompleteAssessment(item._id!)
+                                                            }
+                                                        >
+                                                            Finalizar
+                                                        </Button>
+                                                    )}
+                                                    {item.status === 'completed' && (
+                                                        <Button
+                                                            mode="contained"
+                                                            icon="chart-bar"
+                                                            buttonColor="#3b82f6"
+                                                            onPress={() => {
+                                                                navigation.navigate('AssessmentResults', {
+                                                                    assessment: item,
+                                                                    course: course
+                                                                })
+                                                            }}
+                                                        >
+                                                            Ver resultados
+                                                        </Button>
+                                                    )}
+                                                </View>
+                                            )}
+                                            {!isTeacher && item.status === 'active' && !isAssessmentExpired(item) && activity && (() => {
+                                                const studentGroup = getStudentGroupForActivity(activity)
+                                                return studentGroup ? (
+                                                    <Button
+                                                        mode="contained"
+                                                        icon="clipboard-check"
+                                                        onPress={() => {
+                                                            navigation.navigate('PeerEvaluation', {
+                                                                assessment: item,
+                                                                group: studentGroup
+                                                            })
+                                                        }}
+                                                        style={{ marginTop: 12 }}
+                                                    >
+                                                        Evaluar compañeros
+                                                    </Button>
+                                                ) : null
+                                            })()}
+                                            {!isTeacher && item.status === 'active' && isAssessmentExpired(item) && (
+                                                <View style={{ marginTop: 12 }}>
+                                                    <Chip
+                                                        icon="clock-alert"
+                                                        style={{ backgroundColor: '#f59e0b' }}
+                                                        textStyle={{ color: '#fff' }}
+                                                    >
+                                                        Esta evaluación ha expirado
+                                                    </Chip>
+                                                </View>
+                                            )}
+                                            {!isTeacher && item.status === 'completed' && item.visibility === 'public' && (
+                                                <Button
+                                                    mode="contained"
+                                                    icon="chart-bar"
+                                                    buttonColor="#3b82f6"
+                                                    onPress={() => {
+                                                        navigation.navigate('AssessmentResults', {
+                                                            assessment: item,
+                                                            course: course
+                                                        })
+                                                    }}
+                                                    style={{ marginTop: 12 }}
+                                                >
+                                                    Ver resultados
+                                                </Button>
+                                            )}
+                                        </Card.Content>
+                                    </Card>
+                                )
+                            }}
+                            contentContainerStyle={{ paddingBottom: 80 }}
+                        />
+                    )}
+                    {isTeacher && (
+                        <FAB
+                            icon="plus"
+                            style={styles.fab}
+                            onPress={openNewAssessment}
+                        />
+                    )}
+
+                    <Portal>
+                        <Dialog
+                            visible={showAssessmentDialog}
+                            onDismiss={() => setShowAssessmentDialog(false)}
+                            style={{ maxHeight: '90%' }}
+                        >
+                            <Dialog.Title>
+                                {editingAssessment
+                                    ? 'Editar evaluación'
+                                    : 'Crear evaluación'}
+                            </Dialog.Title>
+                            <Dialog.Content>
+                                <ScrollView style={{ maxHeight: 500 }}>
+                                    <TextInput
+                                        label="Nombre"
+                                        value={assessmentName}
+                                        onChangeText={setAssessmentName}
+                                        left={<TextInput.Icon icon="clipboard-check" />}
+                                        style={{ marginBottom: 8 }}
+                                    />
+                                    <Text style={{ marginBottom: 4, marginTop: 8 }}>
+                                        Actividad
+                                    </Text>
+                                    <ScrollView style={{ maxHeight: 160 }}>
+                                        {activities.map((act) => (
+                                            <Chip
+                                                key={act._id}
+                                                selected={
+                                                    assessmentActivityId === act._id
+                                                }
+                                                onPress={() =>
+                                                    setAssessmentActivityId(act._id!)
+                                                }
+                                                style={{ marginBottom: 6 }}
+                                            >
+                                                {act.title}
+                                            </Chip>
+                                        ))}
+                                    </ScrollView>
+                                    <Text style={{ marginBottom: 8, marginTop: 16, fontWeight: '500' }}>
+                                        Duración
+                                    </Text>
+                                    <View
+                                        style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            marginBottom: 8,
+                                            gap: 8
+                                        }}
+                                    >
+                                        <TextInput
+                                            label="Cantidad"
+                                            value={assessmentDuration}
+                                            onChangeText={setAssessmentDuration}
+                                            keyboardType="numeric"
+                                            left={<TextInput.Icon icon="clock" />}
+                                            style={{ flex: 1 }}
+                                            mode="outlined"
+                                        />
+                                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                                            <Chip
+                                                selected={assessmentDurationUnit === 'minutes'}
+                                                onPress={() => setAssessmentDurationUnit('minutes')}
+                                                style={{ minWidth: 70 }}
+                                            >
+                                                Min
+                                            </Chip>
+                                            <Chip
+                                                selected={assessmentDurationUnit === 'hours'}
+                                                onPress={() => setAssessmentDurationUnit('hours')}
+                                                style={{ minWidth: 70 }}
+                                            >
+                                                Horas
+                                            </Chip>
+                                        </View>
+                                    </View>
+                                    <Text style={{ marginBottom: 8, marginTop: 16, fontWeight: '500' }}>
+                                        Visibilidad
+                                    </Text>
+                                    <View style={{ marginBottom: 8 }}>
+                                        <Chip
+                                            selected={assessmentVisibility === 'public'}
+                                            onPress={() => setAssessmentVisibility('public')}
+                                            icon={assessmentVisibility === 'public' ? 'check-circle' : 'circle-outline'}
+                                            style={{ marginBottom: 8 }}
+                                        >
+                                            Pública
+                                        </Chip>
+                                        <Text
+                                            variant="bodySmall"
+                                            style={{
+                                                marginLeft: 8,
+                                                marginBottom: 12,
+                                                color: '#6b7280'
+                                            }}
+                                        >
+                                            Resultados visibles para el grupo
+                                        </Text>
+                                        <Chip
+                                            selected={assessmentVisibility === 'private'}
+                                            onPress={() => setAssessmentVisibility('private')}
+                                            icon={assessmentVisibility === 'private' ? 'check-circle' : 'circle-outline'}
+                                            style={{ marginBottom: 8 }}
+                                        >
+                                            Privada
+                                        </Chip>
+                                        <Text
+                                            variant="bodySmall"
+                                            style={{
+                                                marginLeft: 8,
+                                                marginBottom: 8,
+                                                color: '#6b7280'
+                                            }}
+                                        >
+                                            Solo visible para el profesor
+                                        </Text>
+                                    </View>
+                                    <View
+                                        style={{
+                                            marginTop: 16,
+                                            flexDirection: 'row',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center'
+                                        }}
+                                    >
+                                        <Text>Criterios</Text>
+                                        <Button
+                                            mode="text"
+                                            onPress={() => setShowCriteriaDialog(true)}
+                                        >
+                                            {selectedCriteria.length > 0
+                                                ? `${selectedCriteria.length} seleccionados`
+                                                : 'Seleccionar criterios'}
+                                        </Button>
+                                    </View>
+                                </ScrollView>
+                            </Dialog.Content>
+                            <Dialog.Actions>
+                                <Button onPress={() => setShowAssessmentDialog(false)}>
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    mode="contained"
+                                    onPress={saveAssessment}
+                                    disabled={
+                                        !assessmentName.trim() ||
+                                        !assessmentActivityId ||
+                                        selectedCriteria.length === 0
+                                    }
+                                >
+                                    {editingAssessment ? 'Guardar' : 'Crear'}
+                                </Button>
+                            </Dialog.Actions>
+                        </Dialog>
+
+                        <Dialog
+                            visible={showCriteriaDialog}
+                            onDismiss={() => setShowCriteriaDialog(false)}
+                        >
+                            <Dialog.Title>Seleccionar Criterios</Dialog.Title>
+                            <Dialog.Content>
+                                <ScrollView style={{ maxHeight: 300 }}>
+                                    {allCriteria.map((criterion) => (
+                                        <View
+                                            key={criterion}
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                paddingVertical: 8
+                                            }}
+                                        >
+                                            <RadioButton
+                                                value={criterion}
+                                                status={
+                                                    selectedCriteria.includes(
+                                                        criterion
+                                                    )
+                                                        ? 'checked'
+                                                        : 'unchecked'
+                                                }
+                                                onPress={() =>
+                                                    toggleCriterion(criterion)
+                                                }
+                                            />
+                                            <Text
+                                                style={{ marginLeft: 8 }}
+                                                onPress={() =>
+                                                    toggleCriterion(criterion)
+                                                }
+                                            >
+                                                {criteriaLabels[criterion]}
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </ScrollView>
+                            </Dialog.Content>
+                            <Dialog.Actions>
+                                <Button onPress={() => setShowCriteriaDialog(false)}>
+                                    Cerrar
+                                </Button>
+                            </Dialog.Actions>
+                        </Dialog>
+                    </Portal>
+                </View>
+            )}
+
             {activeTab !== 'info' &&
+                activeTab !== 'categories' &&
                 activeTab !== 'participants' &&
                 activeTab !== 'activities' &&
+                activeTab !== 'assessments' &&
                 activeTab !== 'reports' && (
                     <View style={styles.placeholder}>
                         <Text>Sección en construcción</Text>
