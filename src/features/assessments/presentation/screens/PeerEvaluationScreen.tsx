@@ -10,7 +10,7 @@ import { UpdatePeerEvaluationUseCase } from '../../domain/usecases/UpdatePeerEva
 import { Group } from '@/src/features/groups/domain/entities/Group'
 import { GetGroupsByCategoryUseCase_v2 } from '@/src/features/groups/domain/usecases/GetGroupsByCategoryUseCase'
 import { useNavigation, useRoute } from '@react-navigation/native'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, View, Alert } from 'react-native'
 import {
     Avatar,
@@ -58,6 +58,26 @@ const criteriaDescriptions: Record<AssessmentCriteria, { [key: number]: string }
 
 const scoreOptions = [2.0, 3.0, 4.0, 5.0] as const
 
+const parseLocalDateTime = (dateStr?: string): Date | null => {
+    if (!dateStr) return null
+    try {
+        const hasTimezone =
+            dateStr.includes('Z') ||
+            /[+-]\d{2}:\d{2}$/.test(dateStr)
+        if (!hasTimezone && dateStr.includes('T')) {
+            const [datePart, timePart] = dateStr.split('T')
+            const [year, month, day] = datePart.split('-').map(Number)
+            const [hours, minutes, seconds = 0] = timePart.split(':').map(Number)
+            return new Date(year, month - 1, day, hours, minutes, seconds)
+        }
+        const parsed = new Date(dateStr)
+        if (Number.isNaN(parsed.getTime())) return null
+        return parsed
+    } catch {
+        return null
+    }
+}
+
 export default function PeerEvaluationScreen() {
     const route = useRoute<any>()
     const navigation = useNavigation<any>()
@@ -69,18 +89,31 @@ export default function PeerEvaluationScreen() {
 
     const studentId = (user as any)?.id || (user as any)?._id
     
-    // Validar que tenemos los datos necesarios
+    // Validar que tenemos los datos necesarios y que la evaluación no haya expirado
     useEffect(() => {
         if (!assessment || !group) {
             console.error('Missing required params:', { assessment, group })
             Alert.alert('Error', 'No se recibió la información necesaria para la evaluación')
             navigation.goBack()
-        } else if (!group._id) {
+            return
+        }
+        if (!group._id) {
             console.error('Group missing _id:', group)
             Alert.alert('Error', 'El grupo no tiene un identificador válido')
             navigation.goBack()
+            return
         }
-    }, [assessment, group])
+        
+        // Validar si la evaluación expiró
+        const endDate = parseLocalDateTime(assessment.endDate)
+        if (endDate && new Date().getTime() > endDate.getTime()) {
+            Alert.alert(
+                'Evaluación Expirada',
+                'El tiempo para realizar esta evaluación ha finalizado. Ya no puedes acceder a ella.',
+                [{ text: 'OK', onPress: () => navigation.goBack() }]
+            )
+        }
+    }, [assessment, group, navigation])
     const getGroupsByCategoryUC = di.resolve<GetGroupsByCategoryUseCase_v2>(
         TOKENS.GetGroupsByCategoryUC_v2
     )
@@ -102,6 +135,12 @@ export default function PeerEvaluationScreen() {
     const [comments, setComments] = useState<Record<string, string>>({})
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
+
+    const isExpired = useMemo(() => {
+        const end = parseLocalDateTime(assessment?.endDate)
+        if (!end) return false
+        return new Date().getTime() > end.getTime()
+    }, [assessment?.endDate])
 
     const loadExistingEvaluations = async () => {
         if (!assessment?._id || !studentId) return
@@ -188,6 +227,12 @@ export default function PeerEvaluationScreen() {
         
         if (!assessment.activityId || !assessment.courseId) {
             Alert.alert('Error', 'La evaluación no tiene toda la información necesaria')
+            return
+        }
+        
+        const endBoundary = parseLocalDateTime(assessment.endDate)
+        if (endBoundary && new Date().getTime() > endBoundary.getTime()) {
+            Alert.alert('Evaluación expirada', 'La fecha límite ya pasó. No puedes registrar nuevas calificaciones.')
             return
         }
         
@@ -325,11 +370,15 @@ export default function PeerEvaluationScreen() {
                     <Button
                         mode="contained"
                         onPress={() => saveEvaluation(evaluatedId)}
-                        disabled={!isComplete || saving}
+                        disabled={!isComplete || saving || isExpired}
                         loading={saving}
                         style={{ marginTop: 16 }}
                     >
-                        {evaluations[evaluatedId] ? 'Actualizar evaluación' : 'Guardar evaluación'}
+                        {isExpired
+                            ? 'Evaluación expirada'
+                            : evaluations[evaluatedId]
+                                ? 'Actualizar evaluación'
+                                : 'Guardar evaluación'}
                     </Button>
                 </Card.Content>
             </Card>
@@ -407,11 +456,27 @@ export default function PeerEvaluationScreen() {
                     </Text>
                     {assessment.endDate && (
                         <Chip icon="clock" style={{ marginTop: 12, alignSelf: 'flex-start' }}>
-                            Fecha límite: {new Date(assessment.endDate).toLocaleString('es-ES')}
+                            Fecha límite: {new Date(assessment.endDate).toLocaleString('es-ES')} {isExpired ? '(expirada)' : ''}
                         </Chip>
                     )}
                 </Card.Content>
             </Card>
+
+            {isExpired && (
+                <Card style={{ marginBottom: 16, backgroundColor: '#2d1b1b' }}>
+                    <Card.Content>
+                        <Text
+                            variant="bodyMedium"
+                            style={{ color: '#f87171', fontWeight: '600', marginBottom: 4 }}
+                        >
+                            Esta evaluación ha superado la fecha límite
+                        </Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                            Ya no puedes enviar ni actualizar calificaciones. Si crees que se trata de un error, comunícate con tu profesor.
+                        </Text>
+                    </Card.Content>
+                </Card>
+            )}
 
             {groupMembers.length === 0 ? (
                 <Card>

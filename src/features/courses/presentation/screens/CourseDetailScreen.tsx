@@ -158,6 +158,9 @@ export default function CourseDetailScreen() {
     const [assessmentVisibility, setAssessmentVisibility] = useState<AssessmentVisibility>('private')
     const [selectedCriteria, setSelectedCriteria] = useState<AssessmentCriteria[]>([])
     const [showCriteriaDialog, setShowCriteriaDialog] = useState(false)
+    const [assessmentProgress, setAssessmentProgress] = useState<
+        Record<string, { evaluators: number; total: number; evaluations: number }>
+    >({})
 
     const refreshCategories = async () => {
         if (!course?._id) return
@@ -202,12 +205,64 @@ export default function CourseDetailScreen() {
         }
     }, [categories, getGroupsByCategoryUC])
 
+    const participants = useMemo(() => {
+        if (!course)
+            return [] as Array<{ id: string; role: 'TEACHER' | 'STUDENT' }>
+        const list: Array<{ id: string; role: 'TEACHER' | 'STUDENT' }> = []
+        if (course.teacherId)
+            list.push({ id: course.teacherId, role: 'TEACHER' })
+        ;(course.studentIds || []).forEach((sid) =>
+            list.push({ id: sid, role: 'STUDENT' })
+        )
+        return list
+    }, [course])
+
+    const studentCount = useMemo(
+        () => participants.filter((p) => p.role === 'STUDENT').length,
+        [participants]
+    )
+
+    const loadAssessmentProgress = useCallback(
+        async (list: Assessment[]) => {
+            if (!isTeacher) {
+                setAssessmentProgress({})
+                return
+            }
+            const total = Math.max(studentCount, 0)
+            if (list.length === 0 || total === 0) {
+                setAssessmentProgress({})
+                return
+            }
+            const entries: Record<string, { evaluators: number; total: number; evaluations: number }> = {}
+            await Promise.all(
+                list
+                    .filter((assessment) => assessment._id && assessment.status !== 'draft')
+                    .map(async (assessment) => {
+                        try {
+                            const evaluations = await getPeerEvaluationsByAssessmentUC.execute(assessment._id!)
+                            const evaluators = new Set(evaluations.map((ev) => ev.evaluatorId)).size
+                            entries[assessment._id!] = {
+                                evaluators,
+                                total,
+                                evaluations: evaluations.length
+                            }
+                        } catch (error) {
+                            console.error('Error loading progress for assessment:', assessment._id, error)
+                        }
+                    })
+            )
+            setAssessmentProgress(entries)
+        },
+        [getPeerEvaluationsByAssessmentUC, isTeacher, studentCount]
+    )
+
     const refreshAssessments = async () => {
         if (!course?._id) return
         setLoadingAssessments(true)
         try {
             const data = await getAssessmentsByCourseUC.execute(course._id)
             setAssessments(data)
+            await loadAssessmentProgress(data)
         } catch (error) {
             console.error('Error loading assessments:', error)
         } finally {
@@ -232,6 +287,11 @@ export default function CourseDetailScreen() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, course?._id, categories, loadGroupsForActivities, getAssessmentsByCourseUC])
+
+    useEffect(() => {
+        if (!isTeacher || assessments.length === 0) return
+        loadAssessmentProgress(assessments).catch(() => {})
+    }, [assessments, isTeacher, loadAssessmentProgress])
 
     const loadReportsData = useCallback(async () => {
         if (!course?._id) {
@@ -267,18 +327,6 @@ export default function CourseDetailScreen() {
             setLoadingReports(false)
         }
     }, [course?._id, categories, getActivitiesByCourseUC, getGroupsByCategoryUC, getGradesByCourseUC])
-
-    const participants = useMemo(() => {
-        if (!course)
-            return [] as Array<{ id: string; role: 'TEACHER' | 'STUDENT' }>
-        const list: Array<{ id: string; role: 'TEACHER' | 'STUDENT' }> = []
-        if (course.teacherId)
-            list.push({ id: course.teacherId, role: 'TEACHER' })
-        ;(course.studentIds || []).forEach((sid) =>
-            list.push({ id: sid, role: 'STUDENT' })
-        )
-        return list
-    }, [course])
 
     const categoryNameById = (id?: string) => {
         const found = categories.find((c) => c._id === id)
@@ -417,6 +465,40 @@ export default function CourseDetailScreen() {
 
     const handleCompleteAssessment = async (assessmentId: string) => {
         try {
+            // Verificar si todos los estudiantes han evaluado
+            const assessment = assessments.find(a => a._id === assessmentId)
+            if (assessment && assessment.status === 'active') {
+                const progress = assessmentProgress[assessmentId]
+                if (progress && progress.evaluators < progress.total) {
+                    const missing = progress.total - progress.evaluators
+                    Alert.alert(
+                        'Evaluaciones Pendientes',
+                        `Aún faltan ${missing} estudiante${missing > 1 ? 's' : ''} por evaluar (${progress.evaluators}/${progress.total} completadas).\n\n¿Deseas finalizar la evaluación de todas formas?`,
+                        [
+                            {
+                                text: 'Cancelar',
+                                style: 'cancel'
+                            },
+                            {
+                                text: 'Finalizar de todas formas',
+                                style: 'destructive',
+                                onPress: async () => {
+                                    try {
+                                        await completeAssessmentUC.execute(assessmentId)
+                                        await refreshAssessments()
+                                        Alert.alert('Éxito', 'Evaluación finalizada correctamente')
+                                    } catch (error) {
+                                        Alert.alert('Error', error instanceof Error ? error.message : 'Error al finalizar la evaluación')
+                                    }
+                                }
+                            }
+                        ]
+                    )
+                    return
+                }
+            }
+            
+            // Si todos han evaluado o no hay datos de progreso, proceder normalmente
             await completeAssessmentUC.execute(assessmentId)
             await refreshAssessments()
             Alert.alert('Éxito', 'Evaluación finalizada correctamente')
@@ -460,17 +542,45 @@ export default function CourseDetailScreen() {
         }
     }
 
-    const getStatusLabel = (status: Assessment['status']) => {
-        switch (status) {
-            case 'draft': return 'Borrador'
-            case 'active': return 'Activa'
-            case 'completed': return 'Completada'
-            default: return status
+    const isAssessmentExpired = (assessment: Assessment): boolean => {
+        if (!assessment.endDate || assessment.status === 'draft' || assessment.status === 'completed') {
+            return false
+        }
+        try {
+            let endDate: Date
+            if (assessment.endDate.includes('T') && !assessment.endDate.includes('Z') && !assessment.endDate.includes('+') && !assessment.endDate.includes('-', 10)) {
+                const [datePart, timePart] = assessment.endDate.split('T')
+                const [year, month, day] = datePart.split('-').map(Number)
+                const [hours, minutes, seconds = 0] = timePart.split(':').map(Number)
+                endDate = new Date(year, month - 1, day, hours, minutes, seconds)
+            } else {
+                endDate = new Date(assessment.endDate)
+            }
+            return new Date().getTime() > endDate.getTime()
+        } catch {
+            return false
         }
     }
 
-    const getStatusColor = (status: Assessment['status']) => {
-        switch (status) {
+    const getStatusLabel = (assessment: Assessment) => {
+        // Si la evaluación está activa pero expiró, mostrar "Expirada" para todos
+        if (assessment.status === 'active' && isAssessmentExpired(assessment)) {
+            return 'Expirada'
+        }
+        switch (assessment.status) {
+            case 'draft': return 'Borrador'
+            case 'active': return 'Activa'
+            case 'completed': return 'Completada'
+            default: return assessment.status
+        }
+    }
+
+    const getStatusColor = (assessment: Assessment) => {
+        // Si la evaluación está activa pero expiró, mostrar color naranja para todos
+        if (assessment.status === 'active' && isAssessmentExpired(assessment)) {
+            return '#f59e0b' // Color naranja para expirada
+        }
+        switch (assessment.status) {
             case 'draft': return '#6b7280'
             case 'active': return '#10b981'
             case 'completed': return '#3b82f6'
@@ -1613,6 +1723,7 @@ export default function CourseDetailScreen() {
                             keyExtractor={(a) => a._id || a.name}
                             renderItem={({ item }) => {
                                 const activity = activities.find(a => a._id === item.activityId)
+                                const progress = item._id ? assessmentProgress[item._id] : undefined
                                 return (
                                     <Card style={styles.participantCard}>
                                         <Card.Content>
@@ -1682,11 +1793,11 @@ export default function CourseDetailScreen() {
                                             >
                                                 <Chip
                                                     style={{
-                                                        backgroundColor: getStatusColor(item.status)
+                                                        backgroundColor: getStatusColor(item)
                                                     }}
                                                     textStyle={{ color: '#fff' }}
                                                 >
-                                                    {getStatusLabel(item.status)}
+                                                    {getStatusLabel(item)}
                                                 </Chip>
                                                 <Chip compact>
                                                     Criterios: {item.activeCriteria?.length || 0}
@@ -1701,6 +1812,30 @@ export default function CourseDetailScreen() {
                                                         Fin: {formatDate(item.endDate)}
                                                     </Chip>
                                                 )}
+                                            {isTeacher && item.status !== 'draft' && (
+                                                <View
+                                                    style={{
+                                                        flexDirection: 'row',
+                                                        flexWrap: 'wrap',
+                                                        gap: 8,
+                                                        marginTop: 8
+                                                    }}
+                                                >
+                                                    <Chip compact icon="progress-clock">
+                                                        {progress
+                                                            ? `Avance: ${progress.evaluators}/${progress.total}`
+                                                            : studentCount > 0
+                                                                ? `Avance: 0/${studentCount}`
+                                                                : 'Avance: sin estudiantes'}
+                                                    </Chip>
+                                                    <Chip compact icon="clipboard-check-outline">
+                                                        {progress
+                                                            ? `Evaluaciones: ${progress.evaluations}`
+                                                            : 'Evaluaciones: 0'}
+                                                    </Chip>
+                                                </View>
+                                            )}
+
                                             </View>
                                             {isTeacher && (
                                                 <View
@@ -1752,7 +1887,7 @@ export default function CourseDetailScreen() {
                                                     )}
                                                 </View>
                                             )}
-                                            {!isTeacher && item.status === 'active' && activity && (() => {
+                                            {!isTeacher && item.status === 'active' && !isAssessmentExpired(item) && activity && (() => {
                                                 const studentGroup = getStudentGroupForActivity(activity)
                                                 return studentGroup ? (
                                                     <Button
@@ -1770,6 +1905,17 @@ export default function CourseDetailScreen() {
                                                     </Button>
                                                 ) : null
                                             })()}
+                                            {!isTeacher && item.status === 'active' && isAssessmentExpired(item) && (
+                                                <View style={{ marginTop: 12 }}>
+                                                    <Chip
+                                                        icon="clock-alert"
+                                                        style={{ backgroundColor: '#f59e0b' }}
+                                                        textStyle={{ color: '#fff' }}
+                                                    >
+                                                        Esta evaluación ha expirado
+                                                    </Chip>
+                                                </View>
+                                            )}
                                             {!isTeacher && item.status === 'completed' && item.visibility === 'public' && (
                                                 <Button
                                                     mode="contained"
